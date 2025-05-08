@@ -538,4 +538,6 @@ def create_mp_type_charts(mp_types_data):
     return fig_top, fig_others
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    # Obtener puerto de variable de entorno (para Render) o usar 8050 por defecto (para desarrollo local)
+    port = int(os.environ.get("PORT", 8050))
+    app.run_server(host="0.0.0.0", port=port, debug=False)
