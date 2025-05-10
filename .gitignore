@@ -1,9 +1,6 @@
+# .gitignore
+.env
 __pycache__/
 *.py[cod]
 *$py.class
-.env
-.env.local
-.python-version
-venv/
-env/
-ENV/
+.DS_Store

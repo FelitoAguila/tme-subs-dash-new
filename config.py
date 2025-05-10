@@ -1,11 +1,14 @@
 import os
-from pymongo import MongoClient
+from dotenv import load_dotenv
 
-# Usar variable de entorno o valor por defecto para desarrollo
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+# Cargar variables de entorno
+load_dotenv()
 
-# Otras configuraciones
+# Configuración de MongoDB
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 MONGO_DB_ANALYTICS = 'Analytics'
 MONGO_COLLECTION_DAU = 'dau'
+
+# Configuración para métricas de suscripciones
 MONGO_DB_USERS = 'Users'
 MONGO_COLLECTION_SUBSCRIPTIONS = 'subscriptions'
