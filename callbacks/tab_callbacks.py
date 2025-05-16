@@ -24,7 +24,7 @@ def register_tab_callbacks(app):
 )
     def render_tab_content(tab, start_date, end_date):
         # Búsqueda de subs en Mongo
-        raw_data = metrics.get_data(start_date, end_date)
+        raw_data = metrics.get_subs_data(start_date, end_date)
 
         # Asignación de países según el user_id
         data_with_countries = metrics.asign_countries(raw_data)

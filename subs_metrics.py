@@ -11,7 +11,7 @@ class SubscriptionMetrics:
         self.db = self.client[MONGO_DB_USERS]
         self.collection = self.db[MONGO_COLLECTION_SUBSCRIPTIONS]
 
-    def get_data(self, start_date, end_date):
+    def get_subs_data(self, start_date, end_date):
         """
         Busca las suscripciones en la Mongo, creadas en un rango de fechas
         usando pipeline de agregación de Mongo DB

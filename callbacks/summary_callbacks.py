@@ -15,7 +15,7 @@ def register_summary_callbacks(app):
     )
     def update_summary_metrics(start_date, end_date):
         # Búsqueda de subs en Mongo
-        raw_data = metrics.get_data(start_date, end_date)
+        raw_data = metrics.get_subs_data(start_date, end_date)
 
         # Asignación de países según el user_id
         data_with_countries = metrics.asign_countries(raw_data)
