@@ -1,15 +1,16 @@
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import pandas as pd
-from config import MONGO_URI, MONGO_DB_USERS, MONGO_COLLECTION_SUBSCRIPTIONS
+from config import MONGO_URI, MONGO_DB_USERS, MONGO_COLLECTION_SUBSCRIPTIONS, MONGO_COLLECTION_STRIPE_UPDATES
 from get_country import getCountry
 
 
 class SubscriptionMetrics:
     def __init__(self):
         self.client = MongoClient(MONGO_URI)
-        self.db = self.client[MONGO_DB_USERS]
-        self.collection = self.db[MONGO_COLLECTION_SUBSCRIPTIONS]
+        self.db_users = self.client[MONGO_DB_USERS]
+        self.subscriptions = self.db_users[MONGO_COLLECTION_SUBSCRIPTIONS]
+        self.stripe_updates = self.db_users[MONGO_COLLECTION_STRIPE_UPDATES]
 
     def get_subs_data(self, start_date, end_date):
         """
@@ -48,8 +49,46 @@ class SubscriptionMetrics:
         }
 
         pipeline = [match_stage, project_stage]
-        subs = list(self.collection.aggregate(pipeline))
+        subs = list(self.subscriptions.aggregate(pipeline))
         return subs
+    
+    def get_stripe_updates_data (self, start_date, end_date):
+        """
+        Busca las stripe-updates de cancelaciones de suscripciones en la Mongo, creadas en un rango de fechas
+        usando pipeline de agregación de Mongo DB
+         
+        Parámetros:
+        start_date (str): inicio del rango de fechas 
+        end_date (str): fin del rango de fechas
+    
+        Retorna:
+        subs: lista de documentos (diccionarios) encontrados
+        """
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+
+        match_stage = {
+            "$match": {
+                "timestamp": {
+                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
+                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
+                },
+                "description": "subscription_cancelled"
+            }
+        }
+
+        project_stage = {
+            "$project": {
+                "user_id": 1,
+                "source": 1,
+                "timestamp": { "$substr": ["$timestamp", 0, 10] },
+                "_id": 0
+            }
+        }
+
+        pipeline = [match_stage, project_stage]
+        stripe_cancelation_data = list(self.stripe_updates.aggregate(pipeline))
+        return stripe_cancelation_data
     
     def asign_countries (self, doc_list):
         """
@@ -188,3 +227,10 @@ class SubscriptionMetrics:
                 result['date'] = result['date'].dt.strftime('%Y-%m')
         
         return result
+    
+    def subscription_balance_df(self, df_subs_created, df_subs_cancelled):
+        df_subs_created = df_subs_created.rename(columns={'count': 'creadas'})
+        df_subs_cancelled = df_subs_cancelled.rename(columns={'count': 'canceladas'})
+        df_balance = pd.merge(df_subs_created, df_subs_cancelled, on=['date', 'country', 'provider'], how='outer').fillna(0)
+        df_balance['balance'] = df_balance['creadas'] - df_balance['canceladas']
+        return df_balance[["date", "country", "balance"]]

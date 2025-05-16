@@ -11,4 +11,5 @@ MONGO_COLLECTION_DAU = 'dau'
 
 # Configuración para métricas de suscripciones
 MONGO_DB_USERS = 'Users'
-MONGO_COLLECTION_SUBSCRIPTIONS = 'subscriptions'
+MONGO_COLLECTION_SUBSCRIPTIONS = 'subscriptions'     # para ver creación, status, provider, planes de mp, source
+MONGO_COLLECTION_STRIPE_UPDATES = "stripe-updates"   # para ver las cancelaciones de suscripciones

@@ -9,7 +9,7 @@ from style.styles import (
 from components.charts import (
     create_stacked_bar_chart,
     create_comparison_chart,
-    create_mp_type_charts
+    plot_subscription_balance
 )
 
 
@@ -26,8 +26,15 @@ def register_tab_callbacks(app):
         # Búsqueda de subs en Mongo
         raw_data = metrics.get_subs_data(start_date, end_date)
 
+        # Busqueda de las cancelaciones de Stripe en la Mongo
+        stripe_cancelation_data = metrics.get_stripe_updates_data (start_date, end_date)
+
         # Asignación de países según el user_id
         data_with_countries = metrics.asign_countries(raw_data)
+        stripe_cancelation_full = metrics.asign_countries(stripe_cancelation_data)
+        # Cambio de nombre la columna de la fecha para que sea compatible con la función subs_all y agrego provider: stripe
+        stripe_cancelation_full = stripe_cancelation_full.rename(columns={'timestamp': 'start_date'}) 
+        stripe_cancelation_full['provider'] = "stripe"
 
         # Asignando provider: "mp" a las suscripciones en MP sin provider
         full_data = metrics.assign_provider_default(data_with_countries)
@@ -45,12 +52,11 @@ def register_tab_callbacks(app):
         # Status de suscripciones en general
         active_subs = metrics.subs_all(full_data, status=["active", "authorized"], provider = "all", country="all", source = "all").groupby(['provider', 'country'])['count'].sum().reset_index()
         inactive_subs = metrics.subs_all(full_data, provider = "all", status=["paused", "incomplete", "past_due"], country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
-        cancelled_subs = metrics.subs_all(full_data, provider = "all", status="cancelled", country="all", source="all").groupby(['provider', 'country'])['count'].sum().reset_index()
-
-        # Status suscripciones de Stripe
-        stripe_status_data = metrics.subs_all(full_data, provider = "stripe", status = "all", country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
         
-
+        # Cancelaciones de Stripe
+        daily_cancel_stripe_by_country = metrics.subs_all(stripe_cancelation_full, group_by='day', country="all", provider="stripe")
+        monthly_cancel_stripe_by_country = metrics.subs_all(stripe_cancelation_full, group_by='month', country="all", provider="stripe")
+        
         # Status suscripciones de MP
         mp_active_plans_TMEP_TMEP2 = metrics.subs_all(full_data, provider = "mp", status = "authorized", country = "all", reason=["TranscribeMe Plus","TranscribeMe Plus 2" ]).groupby(['reason', "country"])['count'].sum().reset_index()
         mp_active_plans_others = metrics.subs_all(full_data, status = "authorized", country = "all",
@@ -67,6 +73,9 @@ def register_tab_callbacks(app):
         stripe_monthly_subs = metrics.subs_all(full_data, group_by="month", provider="stripe")
         mp_monthly_subs = metrics.subs_all(full_data, group_by="month", provider=["mp", "mp_discount", "free", "manual"]).groupby('date')['count'].sum().reset_index()
 
+        # Balance de suscripciones Stripe
+        monthly_stripe_balance = metrics.subscription_balance_df(monthly_stripe_subs_by_country, monthly_cancel_stripe_by_country)
+        daily_stripe_balance = metrics.subscription_balance_df(daily_stripe_subs_by_country, daily_cancel_stripe_by_country)
     
         # Gráfico de barras apiladas de monthly subs
         fig_monthly_total = create_stacked_bar_chart(
@@ -104,6 +113,28 @@ def register_tab_callbacks(app):
             title="Suscripciones creadas por día - MercadoPago", x_label="Fecha", y_label="Cantidad"
         )
 
+        # Gráfico de barras apiladas de cancelaciones mensuales de Stripe
+        fig_monthly_stripe_cancel = create_stacked_bar_chart(
+            data_df=monthly_cancel_stripe_by_country, stack_column = "country",
+            title="Suscripciones canceladas por mes - Stripe", x_label="Fecha", y_label="Cantidad"
+        )
+
+        # Gráfico de barras apiladas de cancelaciones diarias de Stripe
+        fig_daily_stripe_cancel = create_stacked_bar_chart(
+            data_df=daily_cancel_stripe_by_country, stack_column = "country",
+            title="Suscripciones canceladas por día - Stripe", x_label="Fecha", y_label="Cantidad"
+        )
+
+        # Gráfico de balance de las suscripciones mensuales de Stripe
+        fig_monthly_stripe_balance = plot_subscription_balance(
+            df = monthly_stripe_balance, title = "Balance de suscripciones mensuales - Stripe"
+        )
+
+        # Gráfico de balance de las suscripciones diarias de Stripe
+        fig_daily_stripe_balance = plot_subscription_balance(
+            df = daily_stripe_balance, title = "Balance de suscripciones mensuales - Stripe"
+        )
+
         # Gráfico de estado de las suscripciones en general
         # Suscriptores activos por país actualmente
         fig_active_subs = create_stacked_bar_chart(
@@ -115,18 +146,6 @@ def register_tab_callbacks(app):
         fig_inactive_subs = create_stacked_bar_chart(
             data_df = inactive_subs, x = "status", y = "count", stack_column = 'country',
             title="Status de las suscripciones inactivas", x_label="Status", y_label="Cantidad", bar_width_days=0.4
-        )
-
-        # Suscripciones canceladas por país
-        fig_cancelled_subs = create_stacked_bar_chart(
-            data_df=cancelled_subs, x = "provider", y = "count", stack_column = 'country',
-            title="Suscripciones canceladas por país", x_label="Plataforma", y_label="Cantidad", bar_width_days=0.4
-        )
-
-        # Gráficos de estados de Stripe
-        fig_stripe_status_data = create_stacked_bar_chart(
-            data_df=stripe_status_data, x = "status", y = "count", stack_column = 'country',
-            title="Status de las suscripciones de Stripe", x_label="Status", y_label="Cantidad", bar_width_days=0.4
         )
 
         # Gráfico de planes TMEP y TMPE2
@@ -210,9 +229,6 @@ def register_tab_callbacks(app):
                     html.Div([
                         dcc.Graph(figure=fig_proportion)
                     ], style=graph_card_style),
-                    html.Div([
-                        dcc.Graph(figure=fig_cancelled_subs)
-                    ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),     
             ])
     
@@ -228,7 +244,18 @@ def register_tab_callbacks(app):
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
                 html.Div([
                     html.Div([
-                        dcc.Graph(figure=fig_stripe_status_data)
+                        dcc.Graph(figure=fig_monthly_stripe_cancel)
+                    ], style=graph_card_style),
+                    html.Div([
+                        dcc.Graph(figure=fig_daily_stripe_cancel)
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+                html.Div([
+                    html.Div([
+                        dcc.Graph(figure=fig_monthly_stripe_balance)
+                    ], style=graph_card_style),
+                    html.Div([
+                        dcc.Graph(figure=fig_daily_stripe_balance)
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])

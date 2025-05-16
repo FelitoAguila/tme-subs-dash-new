@@ -155,10 +155,7 @@ def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x =
         
     Returns:
         Figura de Plotly
-    """
-    import plotly.express as px
-    import pandas as pd
-    
+    """    
     # Asegurarse de que la columna date sea de tipo datetime
     data_df = data_df.copy()
     if 'date' in data_df.columns:  # Verificar si la columna 'date' existe
@@ -221,4 +218,49 @@ def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x =
         # Si los colores no están definidos, usar los valores predeterminados de Plotly
         pass
         
+    return fig
+
+def plot_subscription_balance(df, title):
+    """
+    Genera un gráfico de barras apiladas por país y una línea del balance total por fecha.
+
+    Parámetros:
+    df (DataFrame): debe contener las columnas 'date', 'country' y 'balance'
+
+    Retorna:
+    Una figura de Plotly
+    """
+
+    # Balance total por fecha
+    df_total = df.groupby('date')['balance'].sum().reset_index()
+
+    # Crear figura con barras apiladas
+    fig = go.Figure()
+
+    # Añadir barras por país
+    for country in df['country'].unique():
+        df_country = df[df['country'] == country]
+        fig.add_trace(go.Bar(
+            x=df_country['date'],
+            y=df_country['balance'],
+            name=country
+        ))
+
+    # Añadir línea del balance total
+    fig.add_trace(go.Scatter(
+        x=df_total['date'],
+        y=df_total['balance'],
+        mode='lines+markers',
+        name='Balance total',
+        line=dict(color='blue', width=2)
+    ))
+
+    # Layout
+    fig.update_layout(
+        barmode='relative',
+        title=title,
+        xaxis_title='Fecha',
+        yaxis_title='Balance',
+        xaxis_tickangle=-45
+    )
     return fig
