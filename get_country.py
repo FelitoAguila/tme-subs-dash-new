@@ -24,4 +24,4 @@ def getCountry(phone):
             country_name = country_name.split(',')[0]
         return country_name  # Retorna el nombre del país
     except Exception as e:
-        return "Telegram"  # Retorna "Telegram" si ocurre algún error
+        return "Invalid_number"  # Retorna "Invalid_number" si ocurre algún error

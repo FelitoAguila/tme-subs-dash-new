@@ -22,7 +22,7 @@ def serve_layout():
                 html.Label("Rango de Fechas:", style={"fontWeight": "bold", "marginBottom": "10px"}),
                 dcc.DatePickerRange(
                     id='date-range',
-                    start_date=date(2024, 1, 1),
+                    start_date=date(2023, 1, 1),
                     end_date=date.today(),
                     display_format='YYYY-MM-DD',
                     style={"width": "100%"}

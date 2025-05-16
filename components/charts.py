@@ -22,20 +22,11 @@ def create_bar_chart(data, title, x_label, y_label, color):
     return fig
 
 def create_comparison_chart(total_data, stripe_data, mp_data, title, x_label):
-    # Asegurar que todas las fechas estén incluidas
-    all_dates = set(list(total_data.keys()) + list(stripe_data.keys()) + list(mp_data.keys()))
-    all_dates = sorted(list(all_dates))
-    
-    # Crear listas ordenadas
-    x_values = all_dates
-    total_values = [total_data.get(date, 0) for date in all_dates]
-    stripe_values = [stripe_data.get(date, 0) for date in all_dates]
-    mp_values = [mp_data.get(date, 0) for date in all_dates]
     
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=x_values, y=total_values,
+        x=total_data['date'], y=total_data['count'],
         mode='lines+markers',
         name='Total',
         line=dict(color=colors['primary'], width=3),
@@ -43,7 +34,7 @@ def create_comparison_chart(total_data, stripe_data, mp_data, title, x_label):
     ))
     
     fig.add_trace(go.Scatter(
-        x=x_values, y=stripe_values,
+        x=stripe_data['date'], y=stripe_data['count'],
         mode='lines+markers',
         name='Stripe',
         line=dict(color=colors['stripe'], width=2),
@@ -51,7 +42,7 @@ def create_comparison_chart(total_data, stripe_data, mp_data, title, x_label):
     ))
     
     fig.add_trace(go.Scatter(
-        x=x_values, y=mp_values,
+        x=mp_data['date'], y=mp_data['count'],
         mode='lines+markers',
         name='MercadoPago',
         line=dict(color=colors['mp'], width=2),
@@ -150,61 +141,84 @@ def create_mp_type_charts(mp_types_data):
     return fig_top, fig_others
 
 
-# Función para crear gráficos de barras apiladas
-def create_stacked_bar_chart(data_df, title, x_label, y_label, colors_dict=None):
+def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x = "date", y = "count", bar_width_days=None):
     """
-    Crea un gráfico de barras apiladas por país.
+    Crea un gráfico de barras apiladas donde el ancho de las barras es dinámico.
     
     Args:
-        data_df: DataFrame con fechas en el índice y países en las columnas
+        data_df: DataFrame con columnas 'date', 'count' y la columna para apilar
+        stack_column: Nombre de la columna que se utilizará para dividir las barras apiladas
         title: Título del gráfico
         x_label: Etiqueta del eje X
         y_label: Etiqueta del eje Y
-        colors_dict: Diccionario opcional que asigna países a colores específicos
-    
+        bar_width_days: Ancho de las barras en días (opcional). Si no se proporciona, se calcula automáticamente.
+        
     Returns:
         Figura de Plotly
     """
-    # Si no se proporciona un diccionario de colores, crear uno predeterminado
-    if colors_dict is None:
-        # Lista de colores predefinidos para los países más comunes
-        default_colors = [
-            "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-            "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
-            "#bcbd22", "#17becf", "#003f5c", "#58508d",
-            "#bc5090", "#ff6361", "#ffa600", "#4c78a8",
-            "#f58518", "#54a24b", "#b279a2"
-        ]
-        # Asignar colores a países
-        colors_dict = {}
-        for i, country in enumerate(data_df.columns):
-            colors_dict[country] = default_colors[i % len(default_colors)]
+    import plotly.express as px
+    import pandas as pd
     
-    fig = go.Figure()
+    # Asegurarse de que la columna date sea de tipo datetime
+    data_df = data_df.copy()
+    if 'date' in data_df.columns:  # Verificar si la columna 'date' existe
+        data_df['date'] = pd.to_datetime(data_df['date'])
     
-    # Ordenando en orden descendente según la cantidad
-    ordered_columns = data_df.sum().sort_values(ascending=True).index.tolist()
-
-    # Agregar una traza (barra) para cada país
-    for country in ordered_columns:
-        fig.add_trace(go.Bar(
-            x=data_df.index,
-            y=data_df[country],
-            name=country,
-            marker_color=colors_dict.get(country)
-        ))
+    # Calcular el ancho de barra de forma dinámica si no se proporciona
+    if bar_width_days is None:
+        # Si hay suficientes fechas, calcular el ancho basado en la diferencia promedio entre fechas
+        if len(data_df['date'].unique()) > 1:
+            dates_sorted = sorted(data_df['date'].unique())
+            date_diffs = [(dates_sorted[i+1] - dates_sorted[i]).total_seconds() / (24*60*60) 
+                         for i in range(len(dates_sorted)-1)]
+            # Usar el promedio de diferencias como ancho, pero no menos de 0.5 días
+            bar_width_days = max(0.5, sum(date_diffs) / len(date_diffs) * 0.8)  # 80% del intervalo promedio
+        else:
+            # Valor predeterminado si solo hay una fecha
+            bar_width_days = 1
+        # Convertir el ancho de días a milisegundos para Plotly
+        bar_width_ms = bar_width_days * 24 * 60 * 60 * 1000
+    else:
+        bar_width_ms = bar_width_days
+        
+    # Crear el gráfico de barras apiladas
+    fig = px.bar(
+        data_df,
+        x=x,
+        y=y,
+        color=stack_column,
+        title=title,
+        labels={y: y_label, x: x_label},
+        barmode='stack'
+    )
+    
+    # Aplicar el ancho de barra calculado
+    fig.update_traces(width=bar_width_ms)
     
     # Configurar el layout para barras apiladas
     fig.update_layout(
         barmode='stack',
-        title_text=title,
         xaxis_title=x_label,
         yaxis_title=y_label,
-        plot_bgcolor=colors['light_gray'],
-        paper_bgcolor=colors['card_bg'],
-        font=dict(color=colors['text']),
         margin=dict(l=40, r=40, t=50, b=40),
-        legend_title_text='Países',
+        legend_title_text=stack_column.capitalize(),
     )
     
+    # Opcional: agregar colores personalizados si se desea
+    # Si deseas mantener los colores definidos en tu código original:
+    try:
+        colors = {
+            'light_gray': '#f9f9f9',
+            'card_bg': '#ffffff',
+            'text': '#333333'
+        }
+        fig.update_layout(
+            plot_bgcolor=colors['light_gray'],
+            paper_bgcolor=colors['card_bg'],
+            font=dict(color=colors['text']),
+        )
+    except:
+        # Si los colores no están definidos, usar los valores predeterminados de Plotly
+        pass
+        
     return fig

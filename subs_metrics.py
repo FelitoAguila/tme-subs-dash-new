@@ -10,1156 +10,181 @@ class SubscriptionMetrics:
         self.client = MongoClient(MONGO_URI)
         self.db = self.client[MONGO_DB_USERS]
         self.collection = self.db[MONGO_COLLECTION_SUBSCRIPTIONS]
-    
-    def daily_subs_by_country(self, start_date, end_date):
+
+    def get_data(self, start_date, end_date):
         """
-        Cuenta la cantidad de usuarios que se registraron por día y por país en un rango de fechas.
+        Busca las suscripciones en la Mongo, creadas en un rango de fechas
+        usando pipeline de agregación de Mongo DB
+         
+        Parámetros:
+        start_date (str): inicio del rango de fechas 
+        end_date (str): fin del rango de fechas
     
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un DataFrame con fechas en filas, países en columnas y la cantidad de usuarios como valores
+        Retorna:
+        subs: lista de documentos (diccionarios) encontrados
         """
-    
-        # Convertir fechas de string a datetime para filtrar
         start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Consultar los documentos dentro del rango de fechas
-        query = {
-            "start_date": {
-                "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
+        end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+
+        match_stage = {
+            "$match": {
+                "start_date": {
+                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
+                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
+                }
             }
         }
-        
-        # Obtener solo los campos necesarios
-        projection = {
-            "start_date": 1,
-            "user_id": 1,
-            "_id": 0
-        }
-        
-        # Ejecutar la consulta
-        documents = list(self.collection.find(query, projection))
-        
-        # Procesar los resultados para obtener fecha y país
-        result_data = []
-        
-        for doc in documents:
-            # Extraer solo la parte de la fecha (YYYY-MM-DD)
-            date_str = doc["start_date"][:10]
-            
-            # Obtener el país a partir del número de teléfono
-            user_phone = '+' + str(doc["user_id"] )
-            country = getCountry(user_phone)
-            
-            result_data.append({
-                "date": date_str,
-                "country": country
-            })
-        
-        # Convertir a DataFrame
-        df = pd.DataFrame(result_data)
-        
-        # Si no hay datos, devolver un DataFrame vacío
-        if df.empty:
-            return pd.DataFrame()
-        
-        # Contar por fecha y país
-        pivot_df = df.pivot_table(
-            index="date", 
-            columns="country", 
-            aggfunc="size", 
-            fill_value=0
-        )
-        
-        # Asegurar que todas las fechas en el rango tengan un valor
-        date_range = pd.date_range(start=start_date, end=end_date)
-        date_range_str = [date.strftime('%Y-%m-%d') for date in date_range]
-        
-        # Crear un DataFrame con todas las fechas
-        complete_df = pd.DataFrame(index=date_range_str)
-        
-        # Unir con el pivot_df
-        merged_df = complete_df.join(pivot_df, how='left').fillna(0).astype(int)
-        
-        return merged_df
-    
-    
-    def monthly_subs_by_country(self, start_date, end_date):
-        """
-        Cuenta la cantidad de usuarios que se registraron por mes y por país en un rango de fechas.
 
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-    
-        Returns:
-            Un DataFrame con meses en filas, países en columnas y la cantidad de usuarios como valores
-        """
-
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-
-        # Consultar los documentos dentro del rango de fechas
-        query = {
-            "start_date": {
-                "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
+        project_stage = {
+            "$project": {
+                "user_id": 1,
+                "provider": 1,
+                "status": 1,
+                "source": 1,
+                "reason": 1,
+                "start_date": { "$substr": ["$start_date", 0, 10] },
+                "_id": 0
             }
         }
-    
-        # Obtener solo los campos necesarios
-        projection = {
-            "start_date": 1,
-            "user_id": 1,
-            "_id": 0
-        }
-    
-        # Ejecutar la consulta
-        documents = list(self.collection.find(query, projection))
-    
-        # Procesar los resultados para obtener mes y país
-        result_data = []
-    
-        for doc in documents:
-            # Extraer solo la parte de la fecha y convertir a mes (YYYY-MM)
-            date_str = doc["start_date"][:7]  # Toma solo YYYY-MM
-        
-            # Obtener el país a partir del número de teléfono
-            user_phone = '+' + str(doc["user_id"])
-            country = getCountry(user_phone)
-        
-            result_data.append({
-                "month": date_str,
-                "country": country
-            })
-    
-        # Convertir a DataFrame
-        df = pd.DataFrame(result_data)
-    
-        # Si no hay datos, devolver un DataFrame vacío
-        if df.empty:
-            return pd.DataFrame()
-    
-        # Contar por mes y país
-        pivot_df = df.pivot_table(
-            index="month", 
-            columns="country", 
-            aggfunc="size", 
-            fill_value=0
-        )
-    
-        # Asegurar que todos los meses en el rango tengan un valor
-        # Crear un rango de meses desde start_date hasta end_date
-        first_month = start.replace(day=1)
-        last_month = end.replace(day=1)
-        months = []
-    
-        current_month = first_month
-        while current_month <= last_month:
-            months.append(current_month.strftime('%Y-%m'))
-            # Avanzar al siguiente mes
-            if current_month.month == 12:
-                current_month = current_month.replace(year=current_month.year + 1, month=1)
-            else:
-                current_month = current_month.replace(month=current_month.month + 1)
-    
-        # Crear un DataFrame con todos los meses
-        complete_df = pd.DataFrame(index=months)
-    
-        # Unir con el pivot_df
-        merged_df = complete_df.join(pivot_df, how='left').fillna(0).astype(int)
-    
-        return merged_df
 
-    def daily_stripe_subs_by_country(self, start_date, end_date):
+        pipeline = [match_stage, project_stage]
+        subs = list(self.collection.aggregate(pipeline))
+        return subs
+    
+    def asign_countries (self, doc_list):
         """
-        Cuenta la cantidad de usuarios que se registraron por día y por país en un rango de fechas.
+        Asigna el país a cada documento de la lista y devuelve un dataframe con el resultado
+         
+        Parámetros:
+        doc_list (list_dic): lista de documentos (diccionarios)
     
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un DataFrame con fechas en filas, países en columnas y la cantidad de usuarios como valores
+        Retorna:
+        pd.DataFrame: dataframe con los resultados
         """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Consultar los documentos dentro del rango de fechas
-        query = {
-            "start_date": {
-                "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-            },
-            "provider": "stripe"
-        }
-        
-        # Obtener solo los campos necesarios
-        projection = {
-            "start_date": 1,
-            "user_id": 1,
-            "_id": 0
-        }
-        
-        # Ejecutar la consulta
-        documents = list(self.collection.find(query, projection))
-        
-        # Procesar los resultados para obtener fecha y país
-        result_data = []
-        
-        for doc in documents:
-            # Extraer solo la parte de la fecha (YYYY-MM-DD)
-            date_str = doc["start_date"][:10]
-            
-            # Obtener el país a partir del número de teléfono
-            user_phone = '+' + str(doc["user_id"] )
-            country = getCountry(user_phone)
-            
-            result_data.append({
-                "date": date_str,
-                "country": country
-            })
-        
-        # Convertir a DataFrame
-        df = pd.DataFrame(result_data)
-        
-        # Si no hay datos, devolver un DataFrame vacío
-        if df.empty:
-            return pd.DataFrame()
-        
-        # Contar por fecha y país
-        pivot_df = df.pivot_table(
-            index="date", 
-            columns="country", 
-            aggfunc="size", 
-            fill_value=0
-        )
-        
-        # Asegurar que todas las fechas en el rango tengan un valor
-        date_range = pd.date_range(start=start_date, end=end_date)
-        date_range_str = [date.strftime('%Y-%m-%d') for date in date_range]
-        
-        # Crear un DataFrame con todas las fechas
-        complete_df = pd.DataFrame(index=date_range_str)
-        
-        # Unir con el pivot_df
-        merged_df = complete_df.join(pivot_df, how='left').fillna(0).astype(int)
-        
-        return merged_df
-    
-    def monthly_stripe_subs_by_country(self, start_date, end_date):
-        """
-        Cuenta la cantidad de usuarios que se registraron por mes y por país en un rango de fechas.
-
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-    
-        Returns:
-            Un DataFrame con meses en filas, países en columnas y la cantidad de usuarios como valores
-        """
-
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-
-        # Consultar los documentos dentro del rango de fechas
-        query = {
-            "start_date": {
-                "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-            },
-            "provider": "stripe"
-        }
-    
-        # Obtener solo los campos necesarios
-        projection = {
-            "start_date": 1,
-            "user_id": 1,
-            "_id": 0
-        }
-    
-        # Ejecutar la consulta
-        documents = list(self.collection.find(query, projection))
-    
-        # Procesar los resultados para obtener mes y país
-        result_data = []
-    
-        for doc in documents:
-            # Extraer solo la parte de la fecha y convertir a mes (YYYY-MM)
-            date_str = doc["start_date"][:7]  # Toma solo YYYY-MM
-        
-            # Obtener el país a partir del número de teléfono
-            user_phone = '+' + str(doc["user_id"])
-            country = getCountry(user_phone)
-        
-            result_data.append({
-                "month": date_str,
-                "country": country
-            })
-    
-        # Convertir a DataFrame
-        df = pd.DataFrame(result_data)
-    
-        # Si no hay datos, devolver un DataFrame vacío
-        if df.empty:
-            return pd.DataFrame()
-    
-        # Contar por mes y país
-        pivot_df = df.pivot_table(
-            index="month", 
-            columns="country", 
-            aggfunc="size", 
-            fill_value=0
-        )
-    
-        # Asegurar que todos los meses en el rango tengan un valor
-        # Crear un rango de meses desde start_date hasta end_date
-        first_month = start.replace(day=1)
-        last_month = end.replace(day=1)
-        months = []
-    
-        current_month = first_month
-        while current_month <= last_month:
-            months.append(current_month.strftime('%Y-%m'))
-            # Avanzar al siguiente mes
-            if current_month.month == 12:
-                current_month = current_month.replace(year=current_month.year + 1, month=1)
-            else:
-                current_month = current_month.replace(month=current_month.month + 1)
-    
-        # Crear un DataFrame con todos los meses
-        complete_df = pd.DataFrame(index=months)
-    
-        # Unir con el pivot_df
-        merged_df = complete_df.join(pivot_df, how='left').fillna(0).astype(int)
-    
-        return merged_df
-
-    def daily_mp_subs_by_country (self, start_date, end_date):
-        """
-        Cuenta la cantidad de usuarios que se registraron por día y por país en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un DataFrame con fechas en filas, países en columnas y la cantidad de usuarios como valores
-        """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Consultar los documentos dentro del rango de fechas
-        query = {
-            "start_date": {
-                "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-            },
-            "$or": [
-                {"provider": {"$ne": "stripe"}},  # distinto de "stripe"
-                {"provider": {"$exists": False}}  # o el campo no existe
-            ]
-        }
-        
-        # Obtener solo los campos necesarios
-        projection = {
-            "start_date": 1,
-            "user_id": 1,
-            "source": 1,
-            "_id": 0
-        }
-        
-        # Ejecutar la consulta
-        documents = list(self.collection.find(query, projection))
-        
-        # Procesar los resultados para obtener fecha y país
-        result_data = []
-        
-        for doc in documents:
-            # Extraer solo la parte de la fecha (YYYY-MM-DD)
-            date_str = doc["start_date"][:10]
-            
-            # Obtener el país a partir del número de teléfono
+        for doc in doc_list:
             if doc['source'] == "t":
                 country = "Telegram"
             else:
-                user_phone = '+' + str(doc["user_id"] )
+                user_id = doc['user_id']
+                user_phone = '+' + str(user_id)
                 country = getCountry(user_phone)
-            
-            result_data.append({
-                "date": date_str,
-                "country": country
-            })
-        
-        # Convertir a DataFrame
-        df = pd.DataFrame(result_data)
-        
-        # Si no hay datos, devolver un DataFrame vacío
-        if df.empty:
-            return pd.DataFrame()
-        
-        # Contar por fecha y país
-        pivot_df = df.pivot_table(
-            index="date", 
-            columns="country", 
-            aggfunc="size", 
-            fill_value=0
-        )
-        
-        # Asegurar que todas las fechas en el rango tengan un valor
-        date_range = pd.date_range(start=start_date, end=end_date)
-        date_range_str = [date.strftime('%Y-%m-%d') for date in date_range]
-        
-        # Crear un DataFrame con todas las fechas
-        complete_df = pd.DataFrame(index=date_range_str)
-        
-        # Unir con el pivot_df
-        merged_df = complete_df.join(pivot_df, how='left').fillna(0).astype(int)
-        
-        return merged_df
-
-    def monthly_mp_subs_by_country(self, start_date, end_date):
+            doc['country'] = country
+        return pd.DataFrame(doc_list)
+    
+    def assign_provider_default(self, df):
         """
-        Cuenta la cantidad de usuarios que se registraron por mes y por país en un rango de fechas.
-
+        Asigna el valor 'mp' a los valores faltantes en la columna 'provider' de un DataFrame.
+    
+        Parámetros:
+        df (pandas.DataFrame): DataFrame que contiene la columna 'provider'.
+    
+        Retorna:
+        pandas.DataFrame: DataFrame con los valores faltantes en 'provider' reemplazados por 'mp'.
+    
+        Raises:
+        KeyError: Si la columna 'provider' no existe en el DataFrame.
+        """
+        try:
+            # Verificar si la columna 'provider' existe
+            if 'provider' not in df.columns:
+                raise KeyError("La columna 'provider' no existe en el DataFrame")
+        
+            # Reemplazar valores faltantes (NaN, None) en la columna 'provider' con 'mp'
+            df['provider'] = df['provider'].fillna('mp')
+        
+            return df
+    
+        except Exception as e:
+            print(f"Error: {e}")
+            return df  # Retorna el DataFrame sin cambios en caso de error
+        
+    def subs_all(self, df, group_by='day', status=None, reason=None, source=None, country=None, provider=None):
+        """
+        Analiza suscripciones, agrupando por día o mes, con filtros opcionales.
+    
         Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
+            df (pandas.DataFrame): DataFrame con las columnas ['status', 'reason', 'user_id', 'source', 
+                                   'start_date', 'country', 'provider']
+            group_by (str): 'day' o 'month' para agrupar los resultados
+            status (str or list): Valor(es) para filtrar por status, 'all' para considerar todos
+            reason (str or list): Valor(es) para filtrar por reason, 'all' para considerar todos
+            source (str or list): Valor(es) para filtrar por source, 'all' para considerar todos
+            country (str or list): Valor(es) para filtrar por country, 'all' para considerar todos
+            provider (str or list): Valor(es) para filtrar por provider, 'all' para considerar todos
     
         Returns:
-            Un DataFrame con meses en filas, países en columnas y la cantidad de usuarios como valores
+            pandas.DataFrame: DataFrame con la cantidad de suscripciones agrupadas por día o mes y 
+                         las columnas de filtro especificadas
         """
+        # Crear una copia del DataFrame para no modificar el original
+        df_copy = df.copy()
+    
+        # Convertir start_date a datetime si es string
+        if df_copy['start_date'].dtype == 'object':
+            df_copy['start_date'] = pd.to_datetime(df_copy['start_date'])
 
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-
-        # Consultar los documentos dentro del rango de fechas
-        query = {
-            "start_date": {
-                "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-            },
-            "$or": [
-                {"provider": {"$ne": "stripe"}},  # distinto de "stripe"
-                {"provider": {"$exists": False}}  # o el campo no existe
-            ]
-        }
-    
-        # Obtener solo los campos necesarios
-        projection = {
-            "start_date": 1,
-            "user_id": 1,
-            "_id": 0
-        }
-    
-        # Ejecutar la consulta
-        documents = list(self.collection.find(query, projection))
-    
-        # Procesar los resultados para obtener mes y país
-        result_data = []
-    
-        for doc in documents:
-            # Extraer solo la parte de la fecha y convertir a mes (YYYY-MM)
-            date_str = doc["start_date"][:7]  # Toma solo YYYY-MM
-        
-            # Obtener el país a partir del número de teléfono
-            user_phone = '+' + str(doc["user_id"])
-            country = getCountry(user_phone)
-        
-            result_data.append({
-                "month": date_str,
-                "country": country
-            })
-    
-        # Convertir a DataFrame
-        df = pd.DataFrame(result_data)
-    
-        # Si no hay datos, devolver un DataFrame vacío
-        if df.empty:
-            return pd.DataFrame()
-    
-        # Contar por mes y país
-        pivot_df = df.pivot_table(
-            index="month", 
-            columns="country", 
-            aggfunc="size", 
-            fill_value=0
-        )
-    
-        # Asegurar que todos los meses en el rango tengan un valor
-        # Crear un rango de meses desde start_date hasta end_date
-        first_month = start.replace(day=1)
-        last_month = end.replace(day=1)
-        months = []
-    
-        current_month = first_month
-        while current_month <= last_month:
-            months.append(current_month.strftime('%Y-%m'))
-            # Avanzar al siguiente mes
-            if current_month.month == 12:
-                current_month = current_month.replace(year=current_month.year + 1, month=1)
+        # Aplicar filtros adicionales si se especifican
+        if status is not None and status != 'all':
+            if isinstance(status, list):
+                df_copy = df_copy[df_copy['status'].isin(status)]
             else:
-                current_month = current_month.replace(month=current_month.month + 1)
+                df_copy = df_copy[df_copy['status'] == status]
     
-        # Crear un DataFrame con todos los meses
-        complete_df = pd.DataFrame(index=months)
-    
-        # Unir con el pivot_df
-        merged_df = complete_df.join(pivot_df, how='left').fillna(0).astype(int)
-    
-        return merged_df
-
-    def daily_subs(self, start_date, end_date):
-        """
-        Cuenta la cantidad de usuarios que se registraron por día en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un diccionario con fechas como claves y cantidad de usuarios como valores
-        """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Crear pipeline de agregación para contar usuarios por día
-        pipeline = [
-            {
-                # Filtrar documentos dentro del rango de fechas
-                "$match": {
-                    "start_date": {
-                        "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                        "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-                    }
-                }
-            },
-            {
-                # Extraer solo la parte de la fecha (YYYY-MM-DD)
-                "$addFields": {
-                    "date_only": {
-                        "$substr": ["$start_date", 0, 10]
-                    }
-                }
-            },
-            {
-                # Agrupar por fecha y contar
-                "$group": {
-                    "_id": "$date_only",
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                # Ordenar por fecha
-                "$sort": {"_id": 1}
-            }
-        ]
-    
-        # Ejecutar la agregación
-        result = list(self.collection.aggregate(pipeline))
-    
-        # Convertir resultado a diccionario fecha -> cantidad
-        daily_counts = {doc["_id"]: doc["count"] for doc in result}
-    
-        # Asegurar que todas las fechas en el rango tengan un valor (incluso si es 0)
-        current_date = start
-        complete_daily_counts = {}
-    
-        while current_date < end:
-            date_str = current_date.strftime('%Y-%m-%d')
-            complete_daily_counts[date_str] = daily_counts.get(date_str, 0)
-            current_date += timedelta(days=1)
-    
-        return complete_daily_counts
-    
-    def monthly_subs(self, start_date, end_date):
-        """
-        Cuenta la cantidad de usuarios que se registraron por mes en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un diccionario con meses como claves (formato 'YYYY-MM') y cantidad de usuarios como valores
-        """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Crear pipeline de agregación para contar usuarios por mes
-        pipeline = [
-            {
-                # Filtrar documentos dentro del rango de fechas
-                "$match": {
-                    "start_date": {
-                        "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                        "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-                    }
-                }
-            },
-            {
-                # Extraer año y mes como 'YYYY-MM'
-                "$addFields": {
-                    "month_only": {
-                        "$substr": ["$start_date", 0, 7]
-                    }
-                }
-            },
-            {
-                # Agrupar por mes y contar
-                "$group": {
-                    "_id": "$month_only",
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                # Ordenar por mes
-                "$sort": {"_id": 1}
-            }
-        ]
-    
-        # Ejecutar la agregación
-        result = list(self.collection.aggregate(pipeline))
-    
-        # Convertir resultado a diccionario mes -> cantidad
-        monthly_counts = {doc["_id"]: doc["count"] for doc in result}
-    
-        # Asegurar que todos los meses en el rango tengan un valor (incluso si es 0)
-        complete_monthly_counts = {}
-    
-        # Generar lista de todos los meses en el rango
-        current_date = datetime(start.year, start.month, 1)
-        end_month = datetime(end.year, end.month, 1)
-    
-        while current_date <= end_month:
-            month_str = current_date.strftime('%Y-%m')
-            complete_monthly_counts[month_str] = monthly_counts.get(month_str, 0)
-        
-            # Avanzar al siguiente mes
-            if current_date.month == 12:
-                current_date = datetime(current_date.year + 1, 1, 1)
+        if reason is not None and reason != 'all':
+            if isinstance(reason, list):
+                df_copy = df_copy[df_copy['reason'].isin(reason)]
             else:
-                current_date = datetime(current_date.year, current_date.month + 1, 1)
+                df_copy = df_copy[df_copy['reason'] == reason]
     
-        return complete_monthly_counts
-    
-
-    def daily_stripe_subs(self, start_date, end_date):
-        """
-        Cuenta la cantidad de suscriptores de Stripe por día en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-        Un diccionario con fechas como claves y cantidad de suscriptores como valores
-        """
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Crear pipeline de agregación para contar suscriptores de Stripe por día
-        pipeline = [
-            {
-                # Filtrar documentos de Stripe dentro del rango de fechas
-                "$match": {
-                    "provider": "stripe",
-                    "start_date": {
-                        "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
-                        "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
-                    }
-                }
-            },
-            {
-                # Extraer solo la parte de la fecha (YYYY-MM-DD)
-                "$addFields": {
-                    "date_only": {
-                        "$substr": ["$start_date", 0, 10]
-                    }
-                }
-            },
-            {
-                # Agrupar por fecha y contar
-                "$group": {
-                    "_id": "$date_only",
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                # Ordenar por fecha
-                "$sort": {"_id": 1}
-            }
-        ]
-    
-        # Ejecutar la agregación
-        result = list(self.collection.aggregate(pipeline))
-    
-        # Convertir resultado a diccionario fecha -> cantidad
-        daily_counts = {doc["_id"]: doc["count"] for doc in result}
-    
-        # Asegurar que todas las fechas en el rango tengan un valor (incluso si es 0)
-        current_date = start
-        complete_daily_counts = {}
-    
-        while current_date < end:
-            date_str = current_date.strftime('%Y-%m-%d')
-            complete_daily_counts[date_str] = daily_counts.get(date_str, 0)
-            current_date += timedelta(days=1)
-        return complete_daily_counts
-    
-    
-    def monthly_stripe_subs(self, start_date, end_date):
-        """
-        Cuenta la cantidad de suscriptores de Stripe por mes en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un diccionario con meses como claves (formato 'YYYY-MM') y cantidad de suscriptores como valores
-        """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Crear pipeline de agregación para contar suscriptores de Stripe por mes
-        pipeline = [
-            {
-                # Filtrar documentos de Stripe dentro del rango de fechas
-                "$match": {
-                    "provider": "stripe",
-                    "start_date": {
-                        "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
-                        "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
-                    }
-                }
-            },
-            {
-                # Extraer año y mes como 'YYYY-MM'
-                "$addFields": {
-                    "month_only": {
-                        "$substr": ["$start_date", 0, 7]
-                    }
-                }
-            },
-            {
-                # Agrupar por mes y contar
-                "$group": {
-                    "_id": "$month_only",
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                # Ordenar por mes
-                "$sort": {"_id": 1}
-            }
-        ]
-    
-        # Ejecutar la agregación
-        result = list(self.collection.aggregate(pipeline))
-    
-        # Convertir resultado a diccionario mes -> cantidad
-        monthly_counts = {doc["_id"]: doc["count"] for doc in result}
-    
-        # Asegurar que todos los meses en el rango tengan un valor (incluso si es 0)
-        complete_monthly_counts = {}
-    
-        # Generar lista de todos los meses en el rango
-        current_date = datetime(start.year, start.month, 1)
-        end_month = datetime(end.year, end.month, 1)
-    
-        while current_date <= end_month:
-            month_str = current_date.strftime('%Y-%m')
-            complete_monthly_counts[month_str] = monthly_counts.get(month_str, 0)
-        
-            # Avanzar al siguiente mes
-            if current_date.month == 12:
-                current_date = datetime(current_date.year + 1, 1, 1)
+        if source is not None and source != 'all':
+            if isinstance(source, list):
+                df_copy = df_copy[df_copy['source'].isin(source)]
             else:
-                current_date = datetime(current_date.year, current_date.month + 1, 1)
+                df_copy = df_copy[df_copy['source'] == source]
     
-        return complete_monthly_counts
-    
-    
-    def daily_mp_subs(self, start_date, end_date):
-        """
-        Cuenta la cantidad de suscriptores que NO son de Stripe por día en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un diccionario con fechas como claves y cantidad de suscriptores como valores
-        """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Crear pipeline de agregación para contar suscriptores que NO son de Stripe por día
-        pipeline = [
-            {
-                # Filtrar documentos que NO son de Stripe dentro del rango de fechas
-                "$match": {
-                    "provider": {"$ne": "stripe"},
-                    "start_date": {
-                        "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
-                        "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
-                    }
-                }
-            },
-            {
-                # Extraer solo la parte de la fecha (YYYY-MM-DD)
-                "$addFields": {
-                    "date_only": {
-                        "$substr": ["$start_date", 0, 10]
-                    }
-                }
-            },
-            {
-                # Agrupar por fecha y contar
-                "$group": {
-                    "_id": "$date_only",
-                    "count": {"$sum": 1}
-                }
-            },
-            {
-                # Ordenar por fecha
-                "$sort": {"_id": 1}
-            }
-        ]
-    
-        # Ejecutar la agregación
-        result = list(self.collection.aggregate(pipeline))
-    
-        # Convertir resultado a diccionario fecha -> cantidad
-        daily_counts = {doc["_id"]: doc["count"] for doc in result}
-    
-        # Asegurar que todas las fechas en el rango tengan un valor (incluso si es 0)
-        current_date = start
-        complete_daily_counts = {}
-    
-        while current_date < end:
-            date_str = current_date.strftime('%Y-%m-%d')
-            complete_daily_counts[date_str] = daily_counts.get(date_str, 0)
-            current_date += timedelta(days=1)
-    
-        return complete_daily_counts
-    
-    def monthly_mp_subs(self, start_date, end_date):
-        """
-        Cuenta la cantidad de suscriptores que NO son de Stripe por mes en un rango de fechas.
-    
-        Args:
-            start_date: Fecha de inicio en formato 'YYYY-MM-DD'
-            end_date: Fecha final en formato 'YYYY-MM-DD'
-        
-        Returns:
-            Un diccionario con meses como claves (formato 'YYYY-MM') y cantidad de suscriptores como valores
-        """
-    
-        # Convertir fechas de string a datetime para filtrar
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d')
-        end = end + timedelta(days=1)  # Incluir el último día completo
-    
-        # Crear pipeline de agregación para contar suscriptores que NO son de Stripe por mes
-        pipeline = [
-            {
-                # Filtrar documentos que NO son de Stripe dentro del rango de fechas
-                "$match": {
-                    "provider": {"$ne": "stripe"},
-                    "start_date": {
-                        "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
-                        "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
-                    }
-                }
-            },
-            {
-                # Extraer año y mes como 'YYYY-MM'
-                "$addFields": {
-                    "month_only": {
-                        "$substr": ["$start_date", 0, 7]
-                    }
-                }
-            },
-            {
-                # Agrupar por mes y contar
-                "$group": {
-                    "_id": "$month_only",
-                    "count": {"$sum": 1}
-                }
-            },  
-            {
-                # Ordenar por mes
-                "$sort": {"_id": 1}
-            }
-        ]
-    
-        # Ejecutar la agregación
-        result = list(self.collection.aggregate(pipeline))
-    
-        # Convertir resultado a diccionario mes -> cantidad
-        monthly_counts = {doc["_id"]: doc["count"] for doc in result}
-    
-        # Asegurar que todos los meses en el rango tengan un valor (incluso si es 0)
-        complete_monthly_counts = {}
-    
-        # Generar lista de todos los meses en el rango
-        current_date = datetime(start.year, start.month, 1)
-        end_month = datetime(end.year, end.month, 1)
-    
-        while current_date <= end_month:
-            month_str = current_date.strftime('%Y-%m')
-            complete_monthly_counts[month_str] = monthly_counts.get(month_str, 0)
-        
-            # Avanzar al siguiente mes
-            if current_date.month == 12:
-                current_date = datetime(current_date.year + 1, 1, 1)
+        if country is not None and country != 'all':
+            if isinstance(country, list):
+                df_copy = df_copy[df_copy['country'].isin(country)]
             else:
-                current_date = datetime(current_date.year, current_date.month + 1, 1)
+                df_copy = df_copy[df_copy['country'] == country]
     
-        return complete_monthly_counts
+        if provider is not None and provider != 'all':
+            if isinstance(provider, list):
+                df_copy = df_copy[df_copy['provider'].isin(provider)]
+            else:
+                df_copy = df_copy[df_copy['provider'] == provider]
     
-    def total_subs(self, start_date, end_date):
-        """Cuenta el total de suscripciones usando daily_subs."""
-        data = self.daily_subs(start_date, end_date)
-        return sum(data.values())
-
-    def average_daily_subs(self, start_date, end_date):
-        """Promedio de suscripciones por día."""
-        data = self.daily_subs(start_date, end_date)
-        if not data:
-            return 0
-        return round(sum(data.values()) / len(data), 2)
-
-    def average_monthly_subs(self, start_date, end_date):
-        """Promedio mensual de suscripciones."""
-        monthly_data = self.monthly_subs(start_date, end_date)
-        if len(monthly_data) == 0:
-            return 0
-        return round(sum(monthly_data.values()) / len(monthly_data), 2)
+        # Crear la columna de agrupación según el parámetro group_by
+        if group_by.lower() == 'day':
+            df_copy['date'] = df_copy['start_date'].dt.date
+        elif group_by.lower() == 'month':
+            df_copy['date'] = df_copy['start_date'].dt.to_period('M').dt.to_timestamp()
+        else:
+            raise ValueError("El parámetro group_by debe ser 'day' o 'month'")
     
-    def total_stripe_subs(self, start_date, end_date):
-        """Cuenta el total de suscripciones usando daily_subs."""
-        data = self.daily_stripe_subs(start_date, end_date)
-        return sum(data.values())
-
-    def average_stripe_daily_subs(self, start_date, end_date):
-        """Promedio de suscripciones por día."""
-        data = self.daily_stripe_subs(start_date, end_date)
-        if not data:
-            return 0
-        return round(sum(data.values()) / len(data), 2)
-
-    def average_stripe_monthly_subs(self, start_date, end_date):
-        """Promedio mensual de suscripciones."""
-        monthly_data = self.monthly_stripe_subs(start_date, end_date)
-        if len(monthly_data) == 0:
-            return 0
-        return round(sum(monthly_data.values()) / len(monthly_data), 2)
+        # Determinar columnas de agrupación adicionales
+        group_columns = ['date']
+        if status is not None:
+            group_columns.append('status')
+        if reason is not None:
+            group_columns.append('reason')
+        if source is not None:
+            group_columns.append('source')
+        if country is not None:
+            group_columns.append('country')
+        if provider is not None:
+            group_columns.append('provider')
     
-    def total_mp_subs(self, start_date, end_date):
-        """Cuenta el total de suscripciones usando daily_subs."""
-        data = self.daily_mp_subs(start_date, end_date)
-        return sum(data.values())
-
-    def average_mp_daily_subs(self, start_date, end_date):
-        """Promedio de suscripciones por día."""
-        data = self.daily_mp_subs(start_date, end_date)
-        if not data:
-            return 0
-        return round(sum(data.values()) / len(data), 2)
-
-    def average_mp_monthly_subs(self, start_date, end_date):
-        """Promedio mensual de suscripciones."""
-        monthly_data = self.monthly_mp_subs(start_date, end_date)
-        if len(monthly_data) == 0:
-            return 0
-        return round(sum(monthly_data.values()) / len(monthly_data), 2)
-
-    def total_subs(self, start_date, end_date):
-        """Cuenta el total de suscripciones usando daily_subs."""
-        data = self.daily_subs(start_date, end_date)
-        return sum(data.values())
-
-    def average_daily_subs(self, start_date, end_date):
-        """Promedio de suscripciones por día."""
-        data = self.daily_subs(start_date, end_date)
-        if not data:
-            return 0
-        return round(sum(data.values()) / len(data), 2)
-
-    def average_monthly_subs(self, start_date, end_date):
-        """Promedio mensual de suscripciones."""
-        monthly_data = self.monthly_subs(start_date, end_date)
-        if len(monthly_data) == 0:
-            return 0
-        return round(sum(monthly_data.values()) / len(monthly_data), 2)
+        # Agrupar y contar
+        result = df_copy.groupby(group_columns).size().reset_index(name='count')
     
-    def total_stripe_subs(self, start_date, end_date):
-        """Cuenta el total de suscripciones usando daily_subs."""
-        data = self.daily_stripe_subs(start_date, end_date)
-        return sum(data.values())
-
-    def average_stripe_daily_subs(self, start_date, end_date):
-        """Promedio de suscripciones por día."""
-        data = self.daily_stripe_subs(start_date, end_date)
-        if not data:
-            return 0
-        return round(sum(data.values()) / len(data), 2)
-
-    def average_stripe_monthly_subs(self, start_date, end_date):
-        """Promedio mensual de suscripciones."""
-        monthly_data = self.monthly_stripe_subs(start_date, end_date)
-        if len(monthly_data) == 0:
-            return 0
-        return round(sum(monthly_data.values()) / len(monthly_data), 2)
-    
-    def total_mp_subs(self, start_date, end_date):
-        """Cuenta el total de suscripciones usando daily_subs."""
-        data = self.daily_mp_subs(start_date, end_date)
-        return sum(data.values())
-
-    def average_mp_daily_subs(self, start_date, end_date):
-        """Promedio de suscripciones por día."""
-        data = self.daily_mp_subs(start_date, end_date)
-        if not data:
-            return 0
-        return round(sum(data.values()) / len(data), 2)
-
-    def average_mp_monthly_subs(self, start_date, end_date):
-        """Promedio mensual de suscripciones."""
-        monthly_data = self.monthly_mp_subs(start_date, end_date)
-        if len(monthly_data) == 0:
-            return 0
-        return round(sum(monthly_data.values()) / len(monthly_data), 2)
-    
-    def contar_suscripciones_mercado_pago(self):
-        """
-        Cuenta la cantidad de suscripciones de Mercado Pago por tipo,
-        identificándolas por la ausencia del campo "provider": "stripe"
-        y analizando los campos "source" y "reason".
-
-        Args:
-            self: La instancia de la base de datos de MongoDB.
-
-        Returns:
-            Una lista de diccionarios, donde cada diccionario tiene una clave
-            que representa el tipo de suscripción y un valor que indica la cantidad.
-        """
-        pipeline = [
-            {"$match": {"provider": {"$ne": "stripe"}}},
-            {"$project": {
-                "tipo": {
-                    "$switch": {
-                        "branches": [
-                            {"case": {"$eq": ["$source", "wc"]}, "then": "Chomky"},
-                            {"case": {"$eq": ["$reason", 'TranscribeMe Plus discount']}, "then": 'TranscribeMe Plus discount'},
-                            {"case": {"$eq": ["$reason", 'TranscribeMe Plus - mensual 20% off']}, "then": 'TranscribeMe Plus - mensual 20% off'},
-                            {"case": {"$eq": ["$reason", "TranscribeMe Plus"]}, "then": "TranscribeMe Plus"},
-                            {"case": {"$eq": ["$reason", "TranscribeMe Plus 2"]}, "then": "TranscribeMe Plus 2"},
-                            {"case": {"$eq": ["$reason", "TranscribeMe Plus 10d"]}, "then": "TranscribeMe Plus 10d"},
-                            {"case": {"$eq": ["$reason", 'TranscribeMe Plus - Anual con 3 meses gratis']}, "then": 'TranscribeMe Plus - Anual con 3 meses gratis'},
-                            {"case": {"$eq": ["$reason", "hearing impairment"]}, "then": "Discapacidad Auditiva"},
-                            {"case": {"$eq": ["$reason", "free-granted"]}, "then": "Gratis"},
-                            {"case": {"$eq": ["$provider", "manual"]}, "then": "Manual"},
-                            {"case": {"$eq": ["$provider", "mp_discount"]}, "then": "Pago por 3 meses"},
-                        ],
-                        "default": "Otro"
-                    }
-                },
-                "_id": 0
-            }},
-            {"$group": {"_id": "$tipo", "cantidad": {"$sum": 1}}},
-            {"$project": {"tipo": "$_id", "cantidad": 1, "_id": 0}}
-        ]
-
-        return list(self.collection.aggregate(pipeline))
-
-    
-    def status_stripe_subs (self):
-        """Status actual de las suscripciones de Stripe"""
-        pipeline = [
-        {"$match": {"provider": "stripe"}},
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
-        ]   
-        return list(self.collection.aggregate(pipeline))
-
-    def status_tme_plus (self):
-        """Status actual de las suscripciones del plan TranscribeMe Plus"""
-        pipeline = [
-        {"$match": {"reason": "TranscribeMe Plus"}},
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
-        ]   
-        return list(self.collection.aggregate(pipeline))
-
-    def status_tme_plus2 (self):
-        """Status actual de las suscripciones del plan TranscribeMe Plus 2"""
-        pipeline = [
-        {"$match": {"reason": "TranscribeMe Plus 2"}},
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}}
-        ]   
-        return list(self.collection.aggregate(pipeline))
-    
-    def total_active_subs(self):
-        """Cuenta todas las suscripciones con status 'active' o 'authorized'"""
-        query = {
-            "status": {"$in": ["active", "authorized"]}
-        }
-        return self.collection.count_documents(query)
-
-    
-    def active_stripe_subs(self):
-        """Devuelve la cantidad de suscripciones activas de Stripe"""
-        query = {"provider": "stripe", "status": "active"}
-        return self.collection.count_documents(query)
-    
-    def authorized_mp_subs(self):
-        """Cuenta suscripciones autorizadas que no sean de Stripe o no tengan 'provider'"""
-        query = {
-            "$and": [
-                {
-                    "$or": [
-                        {"provider": {"$ne": "stripe"}},
-                        {"provider": {"$exists": False}}
-                    ]
-                },
-                {"status": "authorized"}
-            ]
-        }
-        return self.collection.count_documents(query)
+        # Formatear el resultado según el tipo de agrupación
+        if group_by.lower() == 'day':
+            result['date'] = result['date'].astype(str)
+        elif group_by.lower() == 'month':
+            if isinstance(result['date'].iloc[0], pd.Period):
+                result['date'] = result['date'].dt.strftime('%Y-%m')
+            else:
+                result['date'] = result['date'].dt.strftime('%Y-%m')
+        
+        return result
