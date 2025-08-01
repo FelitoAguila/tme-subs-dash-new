@@ -32,7 +32,9 @@ class SubscriptionMetrics:
                 "start_date": {
                     "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
                     "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-                }
+                },
+                "is_experiment_gift":{"$exists": False},
+                "is_free_balance_error":{"$exists": False}
             }
         }
 
