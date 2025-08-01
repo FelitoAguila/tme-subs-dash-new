@@ -23,5 +23,4 @@ register_tab_callbacks(app)
 
 if __name__ == '__main__':
     # Obtener puerto de variable de entorno (para Render) o usar 8050 por defecto (para desarrollo local)
-    port = int(os.environ.get("PORT", 8050))
-    app.run_server(host="0.0.0.0", port=port, debug=False)
+    app.run(debug=False, port = 8050)
