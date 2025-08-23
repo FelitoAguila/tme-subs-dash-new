@@ -63,15 +63,15 @@ def register_tab_callbacks(app):
     State('mp-data-store', 'data')
     )
     def render_tab_content(tab, start_date, end_date, mp_csv_data):
-        
+        # Búsqueda de subs en Mongo
+        raw_data = metrics.get_subs_data(start_date, end_date)
+        # Asignación de países según el user_id
+        data_with_countries = metrics.asign_countries(raw_data)
+        # Asignando provider: "mp" a las suscripciones en MP sin provider
+        full_data = metrics.assign_provider_default(data_with_countries)
         # Contenido para cada pestaña
         if tab == 'tab-overview':
-            # Búsqueda de subs en Mongo
-            raw_data = metrics.get_subs_data(start_date, end_date)
-            # Asignación de países según el user_id
-            data_with_countries = metrics.asign_countries(raw_data)
-            # Asignando provider: "mp" a las suscripciones en MP sin provider
-            full_data = metrics.assign_provider_default(data_with_countries)
+            
             # Monthly subs por países
             monthly_subs_by_country = metrics.subs_all(full_data, group_by='month', country="all")
             # Status de suscripciones en general
