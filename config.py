@@ -13,3 +13,7 @@ MONGO_COLLECTION_DAU = 'dau'
 MONGO_DB_USERS = 'Users'
 MONGO_COLLECTION_SUBSCRIPTIONS = 'subscriptions'     # para ver creación, status, provider, planes de mp, source
 MONGO_COLLECTION_STRIPE_UPDATES = "stripe-updates"   # para ver las cancelaciones de suscripciones
+
+MONGO_DB_TME_CHARTS = 'TranscribeMe-charts'
+MONGO_COLLECTION_TGO_SUBS = 'tgo-subscriptions'
+MONGO_COLLECTION_MP_PAYMENTS = 'mp-payments'
