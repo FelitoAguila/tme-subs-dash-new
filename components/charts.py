@@ -160,6 +160,9 @@ def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x =
     data_df = data_df.copy()
     if 'date' in data_df.columns:  # Verificar si la columna 'date' existe
         data_df['date'] = pd.to_datetime(data_df['date'])
+
+    # Balance total por fecha
+    df_total = data_df.groupby(x)[y].sum().reset_index()
     
     # Calcular el ancho de barra de forma dinámica si no se proporciona
     if bar_width_days is None:
@@ -189,8 +192,19 @@ def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x =
         barmode='stack'
     )
     
+    fig.add_trace(go.Scatter(
+    x=df_total[x],
+    y=df_total[y],
+    mode='lines+markers+text',
+    name='Total',
+    line=dict(color='blue', width=2),
+    text=df_total[y],            
+    textposition='top center',   
+    textfont=dict(size=12)       
+    ))
+
     # Aplicar el ancho de barra calculado
-    fig.update_traces(width=bar_width_ms)
+    fig.update_traces(width=bar_width_ms, selector=dict(type="bar"))
     
     # Configurar el layout para barras apiladas
     fig.update_layout(
@@ -263,4 +277,182 @@ def plot_subscription_balance(df, title):
         yaxis_title='Balance',
         xaxis_tickangle=-45
     )
+    return fig
+
+def plot_monthly_creations_cancellations(df):
+    """
+    Creates a bar chart of monthly creations and cancellations using Plotly.
+    
+    Parameters:
+    df (pandas.DataFrame): DataFrame with 'localdate', 'creations_count', and 'cancelations_count' columns
+    
+    Returns:
+    plotly.graph_objects.Figure: Plotly figure with grouped bars for creations and cancellations
+    """
+    # Validate input columns
+    if not {'localdate', 'creations_count', 'cancelations_count'}.issubset(df.columns):
+        raise ValueError("DataFrame must contain 'localdate', 'creations_count', and 'cancelations_count' columns")
+    
+    # Create a copy to avoid modifying input
+    df = df.copy()
+    
+    # Ensure localdate is datetime and extract year-month
+    df['localdate'] = pd.to_datetime(df['localdate'])
+    df['year_month'] = df['localdate'].dt.strftime('%Y-%m')
+    
+    # Group by year-month and sum creations and cancellations
+    monthly_data = df.groupby('year_month').agg({
+        'creations_count': 'sum',
+        'cancelations_count': 'sum'
+    }).reset_index()
+    
+    # Create Plotly figure
+    fig = go.Figure()
+    
+    # Add bars for creations (light blue)
+    fig.add_trace(go.Bar(
+        x=monthly_data['year_month'],
+        y=monthly_data['creations_count'],
+        name='Creations',
+        marker_color='lightblue',  # Light blue color
+        text=monthly_data['creations_count'],
+        textposition='auto'
+    ))
+    
+    # Add bars for cancellations (light red)
+    fig.add_trace(go.Bar(
+        x=monthly_data['year_month'],
+        y=monthly_data['cancelations_count'],
+        name='Cancellations',
+        marker_color='lightcoral',  # Light red color
+        text=monthly_data['cancelations_count'],
+        textposition='auto'
+    ))
+    
+    # Customize layout
+    fig.update_layout(
+        title='Monthly Creations and Cancellations',
+        xaxis_title='Month (YYYY-MM)',
+        yaxis_title='Count',
+        barmode='group',  # Group bars side by side
+        legend_title='Category',
+        xaxis=dict(
+            tickangle=45,
+            tickmode='array',
+            tickvals=monthly_data['year_month']
+        ),
+        showlegend=True,
+        width=1000,
+        height=600,
+        template='plotly_white',
+        margin=dict(b=150)  # Extra margin for rotated labels
+    )
+    
+    # Add grid
+    fig.update_xaxes(showgrid=True, gridcolor='lightgray')
+    fig.update_yaxes(showgrid=True, gridcolor='lightgray')
+    
+    return fig
+
+
+def stripe_tme_subscriptions_chart(mongo_subs_per_month, canceladas_mongo_per_month, 
+                                   incomplete_mongo_per_month, title):
+    fig = go.Figure()
+    # Created Stripe Subscriptions
+    fig.add_scatter(x=mongo_subs_per_month.index, y=mongo_subs_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='Created', 
+                text=mongo_subs_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#2AA834"),marker=dict(size=4, symbol='circle'))
+    # Canceled Mongo Subscriptions
+    fig.add_scatter(x=canceladas_mongo_per_month.index, y=canceladas_mongo_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='Canceled', 
+                text=canceladas_mongo_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#B8100A"),marker=dict(size=4, symbol='circle'))
+
+    # Incomplete Mongo Subscriptions
+    fig.add_scatter(x=incomplete_mongo_per_month.index, y=incomplete_mongo_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='Incomplete', 
+                text=incomplete_mongo_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#FFA500"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(title=title, yaxis_title="Subscriptions", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+
+def net_stripe_tme_subs_chart(neto_series, title):
+    fig = go.Figure()
+    # Net Stripe Subscriptions
+    fig.add_scatter(x=neto_series.index, y=neto_series, mode='lines+markers+text', 
+                line_shape='spline', name='Net', 
+                text=neto_series,  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#3330CE"),marker=dict(size=4, symbol='circle'))
+
+
+    fig.update_layout(title=title, yaxis_title="Subscriptions", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def plot_mp_planes(df):
+    df_sorted = df.sort_values(by="count", ascending=True)
+    fig = px.bar(
+        df_sorted,
+        x='count', 
+        y="reason",
+        text="count",
+        orientation="h",  # horizontal
+        title="Cantidad de suscriptores activos por plan",
+        labels={"reason": "Plan", "count": "Cantidad"},
+    )
+    
+    # Opciones estéticas
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    fig.update_layout(
+        yaxis=dict(categoryorder="total ascending"),
+        uniformtext_minsize=8,
+        # uniformtext_mode="hide",
+        template="plotly_white"
+    )
+    return fig
+
+def mp_monthly_subscriptions_chart(df):
+    """Chart for Mercado Pago monthly subscriptions data."""
+    fig = go.Figure()
+       
+    # Suscripciones creadas
+    fig.add_scatter(x=df["month"], y=df["creations_count"], mode='lines+markers+text', line_shape='spline',
+                    name='Creadas', #fill='tozeroy',
+                    text=df["creations_count"],  # Display the count values as labels
+                    textposition='top center',  # Position the labels above the markers
+                    line=dict(color="#5BC75B"), marker=dict(size=4, symbol='circle'))
+
+    # Suscripciones Canceladas
+    fig.add_scatter(x=df["month"], y=df["cancelations_count"],mode='lines+markers+text', line_shape='spline',
+                    name='Canceladas', #fill='tozeroy',
+                    text=df["cancelations_count"],  # Display the count values as labels
+                    textposition='top center',  # Position the labels above the markers
+                    line=dict(color="#E06D6D"), marker=dict(size=4, symbol='circle'))
+
+    # Estética general
+    fig.update_layout(title=f"Suscripciones creadas y canceladas", yaxis_title="Cantidad", xaxis_title="Mes",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def mp_net_subscriptions_chart(df):
+    """Chart for Mercado Pago net monthly subscriptions."""
+    fig = go.Figure()
+    # Suscripciones netas
+    fig.add_scatter(x=df["month"], y=df["net_subscriptions"], mode='lines+markers+text', line_shape='spline', 
+                    name='Neto', #fill='tozeroy',
+                    text=df["net_subscriptions"],  # Display the count values as labels
+                    textposition='top center',  # Position the labels above the markers
+                    line=dict(color="#180779"),marker=dict(size=4, symbol='circle'))
+    
+    # Estética general
+    fig.update_layout(title=f"Suscripciones Netas", yaxis_title="Cantidad", xaxis_title="Mes",
+                        yaxis_tickformat=',', title_x=0.5)
     return fig
