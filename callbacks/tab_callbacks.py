@@ -10,14 +10,18 @@ from style.styles import (
 )
 from components.charts import (
     create_stacked_bar_chart,
-    create_comparison_chart,
     plot_subscription_balance,
     plot_monthly_creations_cancellations,
     stripe_tme_subscriptions_chart,
     net_stripe_tme_subs_chart,
     plot_mp_planes,
     mp_monthly_subscriptions_chart,
-    mp_net_subscriptions_chart
+    mp_net_subscriptions_chart,
+    mp_unique_payments_per_month,
+    income_mp_per_month,
+    mp_subscription_payments_per_month,
+    total_subscriptions_chart,
+    net_subscriptions_chart
 )
 
 
@@ -56,37 +60,66 @@ def register_tab_callbacks(app):
 
     # Callback para renderizar los charts
     @app.callback(
-    Output('tab-content', 'children'),
-    Input('tabs', 'value'),
-    Input('date-range', 'start_date'),
-    Input('date-range', 'end_date'),
-    State('mp-data-store', 'data')
+        Output('tab-content', 'children'),
+        Input('tabs', 'value'),
+        Input('date-range', 'start_date'),
+        Input('date-range', 'end_date'),
+        State('mp-data-store', 'data')
     )
     def render_tab_content(tab, start_date, end_date, mp_csv_data):
-        # Búsqueda de subs en Mongo
-        raw_data = metrics.get_subs_data(start_date, end_date)
-        # Asignación de países según el user_id
-        data_with_countries = metrics.asign_countries(raw_data)
-        # Asignando provider: "mp" a las suscripciones en MP sin provider
-        full_data = metrics.assign_provider_default(data_with_countries)
+        # Carga de datos de Stripe
+        stripe_tme_subs_per_month = metrics.get_stripe_subs_per_month()
+        canceladas_tme_stripe_per_month = metrics.get_canceladas_stripe_per_month()
+        incomplete_tme_stripe_per_month = metrics.get_incomplete_stripe_per_month()
+        neto_stripe_tme_subs = (
+                stripe_tme_subs_per_month["count"]
+                - canceladas_tme_stripe_per_month["count"]
+                - incomplete_tme_stripe_per_month["count"]
+        )
+
+        tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month = metrics.get_tgo_subs()
+        neto_tgo = (
+                tgo_2025_subs_per_month["count"]
+                - tgo_canceled_per_month["count"]
+                - tgo_incomplete_per_month["count"]
+        )
+
+        # Carga de datos de MP
+        mp_monthly_data = metrics.process_mp_subscriptions_data(mp_csv_data)
+        
+        # Total
+        total_df = metrics.get_totales_por_mes(mp_monthly_data,stripe_tme_subs_per_month,
+                                               canceladas_tme_stripe_per_month, 
+                                               incomplete_tme_stripe_per_month,
+                                               tgo_2025_subs_per_month, 
+                                               tgo_canceled_per_month,
+                                               tgo_incomplete_per_month)
+        
         # Contenido para cada pestaña
         if tab == 'tab-overview':
-            
+            # Búsqueda de subs en Mongo
+            raw_data = metrics.get_subs_data(start_date, end_date)
+            # Asignación de países según el user_id
+            data_with_countries = metrics.asign_countries(raw_data)
+            # Asignando provider: "mp" a las suscripciones en MP sin provider
+            full_data = metrics.assign_provider_default(data_with_countries)
             # Monthly subs por países
             monthly_subs_by_country = metrics.subs_all(full_data, group_by='month', country="all")
             # Status de suscripciones en general
-            active_subs = metrics.subs_all(full_data, status=["active", "authorized"], provider = "all", country="all", source = "all").groupby(['provider', 'country'])['count'].sum().reset_index()
+            active_subs = metrics.get_active_subs_data()
+            active_subs_with_countries = metrics.asign_countries(active_subs)
+            full_active_subs = metrics.assign_provider_default(active_subs_with_countries)
+            active_subs_df = metrics.subs_all(full_active_subs, status=["active", "authorized"], provider = "all", country="all", source = "all").groupby(['provider', 'country'])['count'].sum().reset_index()
             inactive_subs = metrics.subs_all(full_data, provider = "all", status=["paused", "incomplete", "past_due"], country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
-            # Gráfico de barras apiladas de monthly subs
-            fig_monthly_total = create_stacked_bar_chart(
-                data_df=monthly_subs_by_country, stack_column = "country",
-                title="Total de Suscripciones creadas por Mes", x_label="Mes", y_label="Cantidad"
-            )
-
+            
+            # Gráfico de suscripciones totales
+            fig_total_subs = total_subscriptions_chart(total_df)
+            fig_net_subs = net_subscriptions_chart(total_df)
+            
             # Gráfico de estado de las suscripciones en general
             # Suscriptores activos por país actualmente
             fig_active_subs = create_stacked_bar_chart(
-                data_df = active_subs, x = "provider", y = "count", stack_column = 'country',
+                data_df = active_subs_df, x = "provider", y = "count", stack_column = 'country',
                 title="Suscripciones Activas por país", x_label="Plataforma", y_label="Cantidad", bar_width_days=0.4
             )
 
@@ -99,9 +132,11 @@ def register_tab_callbacks(app):
             return html.Div([
                 html.Div([
                     html.Div([
-                        dcc.Graph(figure=fig_monthly_total)
+                        dcc.Graph(figure=fig_total_subs)
                     ], style=graph_card_style),
-            
+                    html.Div([
+                        dcc.Graph(figure=fig_net_subs)
+                    ], style=graph_card_style)
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
                 html.Div([
                     html.Div([
@@ -114,21 +149,13 @@ def register_tab_callbacks(app):
             ])
     
         elif tab == 'tab-stripe':
-            # Balance de suscripciones Stripe
-            stripe_subs_per_month = metrics.get_stripe_subs_per_month()
-            canceladas_stripe_per_month = metrics.get_canceladas_stripe_per_month()
-            incomplete_stripe_per_month = metrics.get_incomplete_stripe_per_month()
-            neto_series = (
-                stripe_subs_per_month["count"]
-                - canceladas_stripe_per_month["count"]
-                - incomplete_stripe_per_month["count"]
-            )
-            fig_monthly_stripe_all = stripe_tme_subscriptions_chart(stripe_subs_per_month,
-                                                                    canceladas_stripe_per_month,
-                                                                    incomplete_stripe_per_month,
+            # Gráficos
+            fig_monthly_stripe_all = stripe_tme_subscriptions_chart(stripe_tme_subs_per_month,
+                                                                    canceladas_tme_stripe_per_month,
+                                                                    incomplete_tme_stripe_per_month,
                                                                     title=f"Stripe TranscribeMe Subscriptions")
 
-            fig_monthly_stripe_balance = net_stripe_tme_subs_chart(neto_series, 
+            fig_monthly_stripe_balance = net_stripe_tme_subs_chart(neto_stripe_tme_subs, 
                                                                title=f"Net Stripe TranscribeMe Subscriptions")
             
             # Busqueda de Stripe TME subs en Mongo DB
@@ -154,12 +181,6 @@ def register_tab_callbacks(app):
             )
 
             # TGO 
-            tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month = metrics.get_tgo_subs()
-            neto_tgo = (
-                tgo_2025_subs_per_month["count"]
-                - tgo_canceled_per_month["count"]
-                - tgo_incomplete_per_month["count"]
-            )
             tgo_subs_chart = stripe_tme_subscriptions_chart(tgo_2025_subs_per_month, tgo_canceled_per_month, 
                                                         tgo_incomplete_per_month, 
                                                         title=f"Stripe TranscribeGo Subscriptions")
@@ -193,23 +214,23 @@ def register_tab_callbacks(app):
             ])
     
         elif tab == 'tab-mp':
-            # Suscripciones mensuales de MP
-            mp_monthly_data = metrics.process_mp_subscriptions_data(mp_csv_data)
+            # Gráficos de suscripciones de MP
             fig_subs_mp = mp_monthly_subscriptions_chart(mp_monthly_data)
             fig_subs_neto_mp = mp_net_subscriptions_chart(mp_monthly_data)
             
             # Status suscripciones de MP
             mp_active_subs_per_plan = metrics.get_mp_planes()
             fig_mp_active_plans = plot_mp_planes(mp_active_subs_per_plan)
-
-            # MP-discount
-            mp_discount_monthly = metrics.subs_all(full_data, group_by='month', provider = "mp_discount", country="all")
-            fig_mp_discount_monthly = create_stacked_bar_chart(
-                data_df=mp_discount_monthly, x = "date", y = "count", stack_column = 'country',
-                title="Compras de tres meses de TME por mes", x_label="Fecha", y_label="Cantidad", bar_width_days=None
-            )
+            
+            # INGRESOS
+            # Pagos únicos
+            all_mp_payments = metrics.get_mp_payments(start_date, end_date)
+            fig_unique_mp_payments_per_month = mp_unique_payments_per_month(all_mp_payments)
+            fig_mp_subs_payments_per_month = mp_subscription_payments_per_month(all_mp_payments)
+            fig_income_mp_per_month = income_mp_per_month(all_mp_payments)
             
             return html.Div([
+                # Suscripciones creadas y canceladas
                 html.Div([
                     html.Div([
                         dcc.Graph(figure=fig_subs_mp)
@@ -219,12 +240,27 @@ def register_tab_callbacks(app):
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
 
+                # Pagos MP
+                html.Div([
+                    # Pagos de suscripciones por mes
+                    html.Div([
+                        dcc.Graph(figure=fig_mp_subs_payments_per_month)
+                    ], style=graph_card_style),
+                    # Pagos únicos por mes
+                    html.Div([
+                        dcc.Graph(figure=fig_unique_mp_payments_per_month)
+                    ], style=graph_card_style),
+                ],style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+
+                # Ingresos Totales MP
+                html.Div([
+                    html.Div([
+                        dcc.Graph(figure=fig_income_mp_per_month)
+                    ], style=graph_card_style),
+                ],style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+
                 #Nueva sección para los pagos por 3 meses
                 html.Div([
-                    # Pagos de 3 meses por mes
-                    html.Div([
-                        dcc.Graph(figure=fig_mp_discount_monthly)
-                    ], style=graph_card_style),
                     # Tipos de planes MP
                     html.Div([
                         dcc.Graph(figure=fig_mp_active_plans)
