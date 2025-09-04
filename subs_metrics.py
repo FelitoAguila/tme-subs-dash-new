@@ -59,6 +59,41 @@ class SubscriptionMetrics:
         subs = list(self.subscriptions.aggregate(pipeline))
         return subs
     
+    def get_active_subs_data(self):
+        """
+        Busca las suscripciones activas en la Mongo, usando pipeline de agregación de Mongo DB
+         
+        Parámetros:
+        start_date (str): inicio del rango de fechas 
+        end_date (str): fin del rango de fechas
+    
+        Retorna:
+        subs: lista de documentos (diccionarios) encontrados
+        """
+        match_stage = {
+            "$match": {
+                "status": {
+                    "$in": ['active', 'authorized']
+                },
+            }
+        }
+
+        project_stage = {
+            "$project": {
+                "user_id": 1,
+                "provider": 1,
+                "status": 1,
+                "source": 1,
+                "reason": 1,
+                "start_date": { "$substr": ["$start_date", 0, 10] },
+                "_id": 0
+            }
+        }
+
+        pipeline = [match_stage, project_stage]
+        subs = list(self.subscriptions.aggregate(pipeline))
+        return subs
+    
     def get_stripe_cancelation_data (self, start_date, end_date):
         """
         Busca las stripe-updates de cancelaciones de suscripciones en la Mongo, creadas en un rango de fechas
@@ -487,35 +522,34 @@ class SubscriptionMetrics:
     def process_mp_subscriptions_data(self, data):
         """
         Process the Mercado Pago subscriptions data to prepare it for visualization.
-    
+
         Args:
             data (JSON): Mercado Pago subscriptions data stored in JSON format.
-            This should include fields like 'status', 'start_date', 'last_charge_date', and 'billing_day'.
         Returns:
             pd.DataFrame: Processed DataFrame with necessary columns.
         """
         if not data:
-            print ("No MP data provided for processing.")
+            print("No MP data provided for processing.")
             return pd.DataFrame(columns=['month', 'creations_count', 'cancelations_count', 'net_subscriptions'])
+
         df = pd.DataFrame(data)
-    
+
         # Separo solo las columnas que me interesan
         df = df[['status', 'start_date', 'last_charge_date', 'billing_day']].copy()
-    
-        # 1. Obtengo la fecha de inicio de todas las suscripciones
+
+        # 1. Convertir start_date a datetime
         df['start_date'] = pd.to_datetime(df['start_date'])
-        df['start_month'] = df['start_date'].dt.strftime('%b-%Y')
+        df['start_month'] = df['start_date'].dt.to_period('M').dt.to_timestamp()
 
         # 2. Cuento por mes
         creations_df = df['start_month'].value_counts().reset_index()
-        creations_df.columns = ['start_month', 'count']
+        creations_df.columns = ['month', 'creations_count']
 
-        # 3. Ordeno y formateo
-        creations_df['month_for_sorting'] = pd.to_datetime(creations_df['start_month'], format='%b-%Y')
-        creations_df = creations_df.sort_values('month_for_sorting').drop(columns='month_for_sorting')
+        # 3. Ordeno cronológicamente
+        creations_df = creations_df.sort_values('month')
 
-        # 4. Busco solo los cancelados
-        cancelados_df = df[df['status']=='cancelled'].copy()
+        # 4. Filtrar cancelados
+        cancelados_df = df[df['status'] == 'cancelled'].copy()
 
         # 5. Convertir last_charge_date a datetime
         cancelados_df['last_charge_date'] = pd.to_datetime(cancelados_df['last_charge_date'])
@@ -529,38 +563,99 @@ class SubscriptionMetrics:
             )
         )
 
-        # 7. Crear cancelation_month con formato "Mes-Año"
-        cancelados_df['cancelation_month'] = cancelados_df['expiration_date'].dt.strftime('%b-%Y')
+        # 7. Crear cancelation_month en formato datetime (primer día del mes)
+        cancelados_df['cancelation_month'] = cancelados_df['expiration_date'].dt.to_period('M').dt.to_timestamp()
 
-        # 8. Agrupar la cantidad de cancelaciones por mes
+        # 8. Agrupar cancelaciones por mes
         cancelados_df = cancelados_df['cancelation_month'].value_counts().reset_index()
-        cancelados_df.columns = ['cancelation_month', 'cancelations_count']
+        cancelados_df.columns = ['month', 'cancelations_count']
+        cancelados_df = cancelados_df.sort_values('month')
 
-        # 9. Convertir cancelation_month a datetime para ordenar cronológicamente
-        cancelados_df['month_for_sorting'] = pd.to_datetime(cancelados_df['cancelation_month'], format='%b-%Y')
-        cancelados_df = cancelados_df.sort_values('month_for_sorting').drop(columns='month_for_sorting')
-    
-        # 10. Unir los DataFrames de creaciones y cancelaciones
+        # 9. Unir creaciones y cancelaciones
         merged_df = pd.merge(
-            creations_df.rename(columns={'start_month': 'month', 'count': 'creations_count'}),
-            cancelados_df.rename(columns={'cancelation_month': 'month', 'cancelations_count': 'cancelations_count'}),
+            creations_df,
+            cancelados_df,
             on='month',
             how='left'
-        ).fillna(0)  # Rellenar con 0 si no hay datos para un mes en alguna de las series
+        ).fillna(0)
 
-        # 11. Calcular suscripciones netas
+        # 10. Calcular suscripciones netas
         merged_df['net_subscriptions'] = merged_df['creations_count'] - merged_df['cancelations_count']
 
-        # 12. Ordeno y formateo
-        merged_df['month_for_sorting'] = pd.to_datetime(merged_df['month'], format='%b-%Y')
-        merged_df = merged_df.sort_values('month_for_sorting').drop(columns='month_for_sorting')
+        # 11. Filtrar solo los meses de 2025
+        merged_df = merged_df[merged_df['month'].dt.year == 2025]
 
-        # Convertir month a datetime
-        merged_df['month_dt'] = pd.to_datetime(merged_df['month'], format='%b-%Y')
-
-        # Filtrar solo los meses del 2025
-        merged_df = merged_df[merged_df['month_dt'].dt.year == 2025]
-
-        # Opcional: quitar la columna auxiliar
-        merged_df = merged_df.drop(columns='month_dt')
         return merged_df
+
+    
+    def get_mp_payments(self, start, end):
+        pipeline = [
+            {"$match":{
+                "status": 'approved',
+                "date_approved":{"$gte": start, "$lt": end}
+                }
+            },
+            {"$project": {
+                "_id":0,
+                "date_approved":1,
+                "description":1,
+                "transaction_amount":1
+                }
+            }
+        ]
+        result = list(self.mp_payments.aggregate(pipeline))
+        if not result:
+            print ("No se encontraron datos entre la fecha ingresada")
+        df = pd.DataFrame(result)
+        return df 
+
+    def get_totales_por_mes(self, mp_df, stripe_creations_df, stripe_cancels_df, stripe_incomplete_df,
+                            tgo_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month):
+        """
+        Une MP y Stripe y devuelve un DataFrame con totales de creaciones, cancelaciones e incompletas por mes.
+
+        Args:
+            mp_df (pd.DataFrame): salida de process_mp_subscriptions_data()
+            stripe_creations_df (pd.DataFrame): salida de get_stripe_subs_per_month()
+            stripe_cancels_df (pd.DataFrame): salida de get_canceladas_stripe_per_month()
+            stripe_incomplete_df (pd.DataFrame): salida de get_incomplete_stripe_per_month()
+
+        Returns:
+            pd.DataFrame con columnas:
+                - month
+                - total_creations
+                - total_cancellations
+                - total_incomplete
+                - net_total
+        """
+
+        # Normalizar formato de Stripe (para tener columna 'month')
+        stripe_creations_df = stripe_creations_df.reset_index().rename(columns={'timestamp': 'month', 'count': 'tme_stripe_creations'})
+        stripe_cancels_df = stripe_cancels_df.reset_index().rename(columns={'timestamp': 'month', 'count': 'tme_stripe_cancellations'})
+        stripe_incomplete_df = stripe_incomplete_df.reset_index().rename(columns={'timestamp': 'month', 'count': 'tme_stripe_incomplete'})
+        tgo_subs_per_month = tgo_subs_per_month.reset_index().rename(columns={'created': 'month', 'count': 'tgo_stripe_creations'})
+        tgo_canceled_per_month = tgo_canceled_per_month.reset_index().rename(columns={'ended_at': 'month', 'count': 'tgo_stripe_cancellations'})
+        tgo_incomplete_per_month = tgo_incomplete_per_month.reset_index().rename(columns={'ended_at': 'month', 'count': 'tgo_stripe_incomplete'})
+
+        # Merge progresivo
+        merged = pd.merge(mp_df[['month', 'creations_count', 'cancelations_count']], 
+                      stripe_creations_df, on='month', how='outer')
+        merged = pd.merge(merged, stripe_cancels_df, on='month', how='outer')
+        merged = pd.merge(merged, stripe_incomplete_df, on='month', how='outer')
+        merged = pd.merge(merged, tgo_subs_per_month, on='month', how='outer')
+        merged = pd.merge(merged, tgo_canceled_per_month, on='month', how='outer')
+        merged = pd.merge(merged, tgo_incomplete_per_month, on='month', how='outer')
+
+        # Rellenar NaN con 0
+        merged = merged.fillna(0)
+
+        # Calcular totales
+        merged['total_creations'] = merged['creations_count'] + merged['tme_stripe_creations'] + merged['tgo_stripe_creations']
+        merged['total_cancellations'] = merged['cancelations_count'] + merged['tme_stripe_cancellations'] +  merged ['tgo_stripe_cancellations']
+        merged['total_incomplete'] = merged['tme_stripe_incomplete'] + merged['tgo_stripe_incomplete']
+        merged['net_total'] = merged['total_creations'] - merged['total_cancellations'] - merged['total_incomplete']
+
+        # Ordenar cronológicamente
+        merged = merged.sort_values('month')
+
+        return merged[['month', 'total_creations', 'total_cancellations', 'total_incomplete', 'net_total']]
