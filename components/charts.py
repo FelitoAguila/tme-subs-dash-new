@@ -21,53 +21,6 @@ def create_bar_chart(data, title, x_label, y_label, color):
     )
     return fig
 
-def create_comparison_chart(total_data, stripe_data, mp_data, title, x_label):
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=total_data['date'], y=total_data['count'],
-        mode='lines+markers',
-        name='Total',
-        line=dict(color=colors['primary'], width=3),
-        marker=dict(size=8)
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=stripe_data['date'], y=stripe_data['count'],
-        mode='lines+markers',
-        name='Stripe',
-        line=dict(color=colors['stripe'], width=2),
-        marker=dict(size=8)
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=mp_data['date'], y=mp_data['count'],
-        mode='lines+markers',
-        name='MercadoPago',
-        line=dict(color=colors['mp'], width=2),
-        marker=dict(size=8)
-    ))
-    
-    fig.update_layout(
-        title_text=title,
-        xaxis_title=x_label,
-        yaxis_title="Cantidad",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        plot_bgcolor=colors['light_gray'],
-        paper_bgcolor=colors['card_bg'],
-        font=dict(color=colors['text']),
-        margin=dict(l=40, r=40, t=50, b=40),
-    )
-    
-    return fig
-
 def create_mp_type_charts(mp_types_data):
     # Ordenar por cantidad de mayor a menor
     sorted_data = sorted(mp_types_data, key=lambda x: x['cantidad'], reverse=True)
@@ -454,5 +407,147 @@ def mp_net_subscriptions_chart(df):
     
     # Estética general
     fig.update_layout(title=f"Suscripciones Netas", yaxis_title="Cantidad", xaxis_title="Mes",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def mp_unique_payments_per_month(df):
+    pagos_total = df.copy()
+    pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
+    mp_discount = pagos_total[pagos_total['description'] == 'single_payment_discount'].copy()
+    recargas_tokens = pagos_total[pagos_total['description'] == 'single_payment_C'].copy()
+    recargas_min = pagos_total[pagos_total['description'] == 'single_payment_T'].copy()
+
+    mp_discount_per_month = (
+        mp_discount
+        .groupby(mp_discount['date_approved'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_approved', 'size'))
+        .reset_index()
+    )
+
+    recargas_tokens_per_month = (
+        recargas_tokens
+        .groupby(recargas_tokens['date_approved'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_approved', 'size'))
+        .reset_index()
+    )
+
+    recargas_min_per_month = (
+        recargas_min
+        .groupby(recargas_min['date_approved'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_approved', 'size'))
+        .reset_index()
+    )
+
+    fig = go.Figure()
+    # Suscripciones de 3 meses
+    fig.add_scatter(x=mp_discount_per_month["date_approved"], y=mp_discount_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='mp-3-meses', 
+                text=mp_discount_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#2AA834"),marker=dict(size=4, symbol='circle'))
+
+    # Recargas de tokens
+    fig.add_scatter(x=recargas_tokens_per_month["date_approved"], y=recargas_tokens_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='Recargas de tokens', 
+                text=recargas_tokens_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#3116AA"),marker=dict(size=4, symbol='circle'))
+
+    # Recargas de minutos
+    fig.add_scatter(x=recargas_min_per_month["date_approved"], y=recargas_min_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='Recargas de minutos', 
+                text=recargas_min_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
+
+
+    fig.update_layout(title=f"Pagos únicos Mercado Pago", yaxis_title="Pagos", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def mp_subscription_payments_per_month(df):
+    pagos_total = df.copy()
+    pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
+    suscripciones = pagos_total[pagos_total['description'].str.contains('TranscribeMe')].copy()
+
+    suscripciones_per_month = (
+        suscripciones
+        .groupby(suscripciones['date_approved'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_approved', 'size'))
+        .reset_index()
+    )
+
+    fig = go.Figure()
+    # Suscripciones
+    fig.add_scatter(x=suscripciones_per_month["date_approved"], y=suscripciones_per_month["count"], mode='lines+markers+text', 
+                line_shape='spline', name='Suscripciones', 
+                text=suscripciones_per_month["count"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
+
+
+    fig.update_layout(title=f"Pagos por suscripciones en Mercado Pago", yaxis_title="Suscripciones", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def income_mp_per_month(df):
+    pagos_total = df.copy()
+    pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
+    income_per_month = (
+        pagos_total
+        .groupby(pagos_total['date_approved'].dt.to_period('M').dt.to_timestamp())
+        .agg(income=('transaction_amount', 'sum'))
+        .reset_index()
+    )
+
+    income_per_month['income'] = income_per_month['income'].round(2)
+    fig = go.Figure()
+    # Income
+    fig.add_scatter(x=income_per_month["date_approved"], y=income_per_month["income"], mode='lines+markers+text', 
+                line_shape='spline', name='Income', 
+                text=income_per_month["income"],  # Display the income values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(title=f"Ingresos Mercado Pago (ARS)", yaxis_title="Income", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def total_subscriptions_chart(df):
+    fig = go.Figure()
+    # Created Stripe Subscriptions
+    fig.add_scatter(x=df['month'], y=df["total_creations"], mode='lines+markers+text', 
+                line_shape='spline', name='Created', 
+                text=df["total_creations"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#2AA834"),marker=dict(size=4, symbol='circle'))
+    # Canceled Mongo Subscriptions
+    fig.add_scatter(x=df['month'], y=df["total_cancellations"], mode='lines+markers+text', 
+                line_shape='spline', name='Canceled', 
+                text=df["total_cancellations"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#B8100A"),marker=dict(size=4, symbol='circle'))
+
+    # Incomplete Mongo Subscriptions
+    fig.add_scatter(x=df['month'], y=df["total_incomplete"], mode='lines+markers+text', 
+                line_shape='spline', name='Incomplete', 
+                text=df["total_incomplete"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#FFA500"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(title='Total Subscriptions', yaxis_title="Subscriptions", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def net_subscriptions_chart(df):
+    fig = go.Figure()
+    # Net Subs
+    fig.add_scatter(x=df['month'], y=df["net_total"], mode='lines+markers+text', 
+                line_shape='spline', name='Created', 
+                text=df["net_total"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#2AA834"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(title='Net Subscriptions', yaxis_title="Subscriptions", xaxis_title="Month",
                         yaxis_tickformat=',', title_x=0.5)
     return fig
