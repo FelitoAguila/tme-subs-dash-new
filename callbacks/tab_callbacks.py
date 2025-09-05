@@ -77,7 +77,7 @@ def register_tab_callbacks(app):
                 - incomplete_tme_stripe_per_month["count"]
         )
 
-        tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month = metrics.get_tgo_subs()
+        tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month = metrics.get_tgo_subs(selector='Total')
         neto_tgo = (
                 tgo_2025_subs_per_month["count"]
                 - tgo_canceled_per_month["count"]
@@ -183,8 +183,8 @@ def register_tab_callbacks(app):
             # TGO 
             tgo_subs_chart = stripe_tme_subscriptions_chart(tgo_2025_subs_per_month, tgo_canceled_per_month, 
                                                         tgo_incomplete_per_month, 
-                                                        title=f"Stripe TranscribeGo Subscriptions")
-            tgo_net_chart = net_stripe_tme_subs_chart(neto_tgo, title=f"Net Stripe TranscribeGo Subscriptions")
+                                                        title=None)
+            tgo_net_chart = net_stripe_tme_subs_chart(neto_tgo, title=None)
             
             return html.Div([
                 html.Div([
@@ -205,10 +205,17 @@ def register_tab_callbacks(app):
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
                 html.Div([
                     html.Div([
-                        dcc.Graph(figure=tgo_subs_chart)
+                        html.H3("Stripe TranscribeGo Subscriptions", style={'textAlign': 'center'}), 
+                        dcc.RadioItems(id = 'tgo-subs-selector', 
+                                       options = ['Total', 'Plan Basic', 'Plan Plus','Plan Business'], 
+                                       value = 'Total', inline=True, 
+                                       labelStyle={'margin-right': '20px'}, 
+                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Graph(figure=tgo_subs_chart, id = 'tgo-subs')
                     ], style=graph_card_style),
                     html.Div([
-                        dcc.Graph(figure=tgo_net_chart)
+                        html.H3("Net Stripe TranscribeGo Subscriptions", style={'textAlign': 'center'}), 
+                        dcc.Graph(figure=tgo_net_chart, id = 'tgo-net-subs')
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
@@ -255,7 +262,14 @@ def register_tab_callbacks(app):
                 # Ingresos Totales MP
                 html.Div([
                     html.Div([
-                        dcc.Graph(figure=fig_income_mp_per_month)
+                        html.H3("Ingresos Mercado Pago (ARS)", style={'textAlign': 'center'}), 
+                        dcc.RadioItems(id = 'mp-income-selector', 
+                                       options = ['Total', 'Suscripciones', 'Plan de 3 meses',
+                                                  'Recargas de tokens', 'Recargas de minutos'], 
+                                       value = 'Total', inline=True, 
+                                       labelStyle={'margin-right': '20px'}, 
+                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Graph(figure=fig_income_mp_per_month, id = 'ingresos-mp')
                     ], style=graph_card_style),
                 ],style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
 
@@ -267,4 +281,34 @@ def register_tab_callbacks(app):
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
-      
+    
+    # Callback del chart de Ingresos de MP
+    @app.callback(
+        Output('ingresos-mp', 'figure'),
+        Input('date-range', 'start_date'),
+        Input('date-range', 'end_date'),
+        Input('mp-income-selector', 'value')
+    )
+    def update_mp_income(start_date, end_date, selector):
+        all_mp_payments = metrics.get_mp_payments(start_date, end_date)
+        fig = income_mp_per_month(all_mp_payments, selector)
+        return fig
+
+    # Callback del chart de Planes de TGO
+    @app.callback(
+        Output('tgo-subs', 'figure'),
+        Output('tgo-net-subs', 'figure'),
+        Input('tgo-subs-selector', 'value')
+    )
+    def update_mp_income(selector):
+        tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month = metrics.get_tgo_subs(selector)
+        neto_tgo = (
+                tgo_2025_subs_per_month["count"]
+                - tgo_canceled_per_month["count"]
+                - tgo_incomplete_per_month["count"]
+        )
+        tgo_subs_chart = stripe_tme_subscriptions_chart(tgo_2025_subs_per_month, tgo_canceled_per_month, 
+                                                        tgo_incomplete_per_month, 
+                                                        title=None)
+        tgo_net_chart = net_stripe_tme_subs_chart(neto_tgo, title=None)
+        return tgo_subs_chart, tgo_net_chart
