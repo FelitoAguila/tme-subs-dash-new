@@ -490,26 +490,51 @@ def mp_subscription_payments_per_month(df):
                         yaxis_tickformat=',', title_x=0.5)
     return fig
 
-def income_mp_per_month(df):
+def income_mp_per_month(df, selector = 'Total'):
     pagos_total = df.copy()
+
     pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
-    income_per_month = (
-        pagos_total
-        .groupby(pagos_total['date_approved'].dt.to_period('M').dt.to_timestamp())
-        .agg(income=('transaction_amount', 'sum'))
-        .reset_index()
-    )
+
+    # Unificar los valores de description según el tipo
+    def unify_description(desc):
+        if desc.startswith('TranscribeMe'):
+            return 'Suscripciones'
+        elif desc == 'single_payment_discount':
+            return 'Plan de 3 meses'
+        elif desc == 'single_payment_C':
+            return 'Recargas de tokens'
+        elif desc == 'single_payment_T':
+            return 'Recargas de minutos'
+        return desc  # Mantener el valor original si no coincide con ninguna regla
+
+    pagos_total['description'] = pagos_total['description'].apply(unify_description)
+
+    if selector == 'Total':
+        income_per_month = (
+            pagos_total
+            .groupby(pagos_total['date_approved'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('transaction_amount', 'sum'))
+            .reset_index()
+        )
+    else:
+        income_per_month = (
+            pagos_total[pagos_total['description'] == selector].copy()
+            .groupby(pagos_total['date_approved'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('transaction_amount', 'sum'))
+            .reset_index()
+        )
 
     income_per_month['income'] = income_per_month['income'].round(2)
+
     fig = go.Figure()
     # Income
     fig.add_scatter(x=income_per_month["date_approved"], y=income_per_month["income"], mode='lines+markers+text', 
-                line_shape='spline', name='Income', 
+                line_shape='spline', name=f'{selector}', 
                 text=income_per_month["income"],  # Display the income values as labels
                 textposition='top center',  # Position the labels above the markers
                 line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
 
-    fig.update_layout(title=f"Ingresos Mercado Pago (ARS)", yaxis_title="Income", xaxis_title="Month",
+    fig.update_layout(yaxis_title="Income", xaxis_title="Month",
                         yaxis_tickformat=',', title_x=0.5)
     return fig
 
