@@ -399,50 +399,66 @@ class SubscriptionMetrics:
         )
         return incomplete_stripe_per_month
     
-    def get_tgo_subs(self):
-        query = {"created": {"$gte": '2025-01-01'}}
-        proj = {"_id": 0, "status":1, "created":1, "ended_at":1}
+    def get_tgo_subs(self, selector = 'Total'):
+        pipeline = [
+                    {"$project": {
+                         "_id": 0,
+                         "status": 1,
+                         "created": 1,
+                         "ended_at": 1,
+                         "plan": "$plan.nickname"}}
+                    ]
 
-        docs = self.tgo_subs.find(query, proj)
+        docs = self.tgo_subs.aggregate(pipeline)
         all_tgo_subs = pd.DataFrame(docs)
-
-        tgo_incomplete_docs = self.tgo_subs.find({"status": 'incomplete_expired',
-                                                                "ended_at": {"$gte": '2025-01-01'}}, 
-                                                                proj)
-        tgo_canceled_docs = self.tgo_subs.find({"status": 'canceled',
-                                                                "ended_at": {"$gte": '2025-01-01'}}, 
-                                                                proj)
         
-        tgo_incomplete = pd.DataFrame(tgo_incomplete_docs)
-        tgo_canceled = pd.DataFrame(tgo_canceled_docs)
+        if selector == 'Plan Basic':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan']=='Basic']
+        elif selector == 'Plan Plus':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan']=='Plus']
+        elif selector == 'Plan Business':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan']=='Business']
 
-        all_tgo_subs['created'] = pd.to_datetime(all_tgo_subs['created'], errors='coerce')
+        canceled = all_tgo_subs[all_tgo_subs['status'] == 'canceled'].copy()
+        incomplete = all_tgo_subs[all_tgo_subs['status'] == 'incomplete_expired'].copy()
+        
+        created_2025 = all_tgo_subs[all_tgo_subs['created'] >= '2025-01-01'].copy()     
+        canceled_2025 = canceled[canceled['ended_at'] >= '2025-01-01'].copy()
+        incomplete_2025 = incomplete[incomplete['ended_at']>= '2025-01-01'].copy()
+        
+
+        created_2025['created'] = pd.to_datetime(created_2025['created'], errors='coerce')
         tgo_2025_subs_per_month = (
-            all_tgo_subs
-            .groupby(all_tgo_subs['created'].dt.to_period('M').dt.to_timestamp())
+            created_2025
+            .groupby(created_2025['created'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('created', 'size'))
         )
 
-        tgo_canceled['ended_at'] = pd.to_datetime(tgo_canceled['ended_at'], errors='coerce')
+        canceled_2025['ended_at'] = pd.to_datetime(canceled_2025['ended_at'], errors='coerce')
         tgo_canceled_per_month = (
-            tgo_canceled
-            .groupby(tgo_canceled['ended_at'].dt.to_period('M').dt.to_timestamp())
+            canceled_2025
+            .groupby(canceled_2025['ended_at'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('ended_at', 'size'))
         )
 
-        tgo_incomplete['ended_at'] = pd.to_datetime(tgo_incomplete['ended_at'], errors='coerce')
+        incomplete_2025['ended_at'] = pd.to_datetime(incomplete_2025['ended_at'], errors='coerce')
         tgo_incomplete_per_month = (
-            tgo_incomplete
-            .groupby(tgo_incomplete['ended_at'].dt.to_period('M').dt.to_timestamp())
+            incomplete_2025
+            .groupby(incomplete_2025['ended_at'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('ended_at', 'size'))
         )
         return tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month
 
-    def get_total_active_stripe_subs(self):
+    def get_tme_active_stripe_subs(self):
         query = {'status': "active"}
         total = self.subscriptions.count_documents(query)
         return total
     
+    def get_tgo_active_stripe_subs(self):
+        query = {'status': "active"}
+        total = self.tgo_subs.count_documents(query)
+        return total
+
     def get_total_active_mp_subs(self):
         mp_planes = ['TranscribeMe Plus 10d', 'TranscribeMe Plus discount', 'TranscribeMe Plus 2',
                  'TranscribeMe Plus', 'TranscribeMe Plus - Anual con 3 meses gratis', 
