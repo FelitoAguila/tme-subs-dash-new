@@ -17,9 +17,10 @@ def register_summary_callbacks(app):
             dolar_value = 1200
 
         # Métricas suscripciones
-        active_stripe_subs = metrics.get_total_active_stripe_subs()
+        active_tme_stripe_subs = metrics.get_tme_active_stripe_subs()
+        active_tgo_stripe_subs = metrics.get_tgo_active_stripe_subs()
         authorized_mp_subs = metrics.get_total_active_mp_subs()
-        total_active_subs = active_stripe_subs + authorized_mp_subs
+        total_active_subs = active_tme_stripe_subs + active_tgo_stripe_subs + authorized_mp_subs
 
         # Métricas de ingresos
         ingresos_mp = round (metrics.get_mp_income(),2)
@@ -33,8 +34,12 @@ def register_summary_callbacks(app):
                     html.Span(f"{total_active_subs}", style={"fontSize": "24px", "color": colors['primary']})
                 ], style={"marginBottom": "10px"}),
                 html.Div([
-                    html.Span("Stripe: ", style={"fontWeight": "bold"}),
-                    html.Span(f"{active_stripe_subs}")
+                    html.Span("Stripe TranscribeMe: ", style={"fontWeight": "bold"}),
+                    html.Span(f"{active_tme_stripe_subs}")
+                ], style={"marginBottom": "5px"}),
+                html.Div([
+                    html.Span("Stripe TranscribeGo: ", style={"fontWeight": "bold"}),
+                    html.Span(f"{active_tgo_stripe_subs}")
                 ], style={"marginBottom": "5px"}),
                 html.Div([
                     html.Span("Mercado Pago: ", style={"fontWeight": "bold"}),
@@ -47,7 +52,7 @@ def register_summary_callbacks(app):
                     html.Span(f"{total_ingresos} USD", style={"fontSize": "24px", "color": colors['stripe']})
                 ], style={"marginBottom": "10px"}),
                 html.Div([
-                    html.Span("Stripe: ", style={"fontWeight": "bold"}),
+                    html.Span("Stripe TranscribeMe: ", style={"fontWeight": "bold"}),
                     html.Span(f"{ingresos_stripe} USD (placeholder)")
                 ], style={"marginBottom": "5px"}),
                 html.Div([
