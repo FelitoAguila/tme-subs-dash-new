@@ -31,17 +31,20 @@ def serve_layout():
                     style={"width": "100%","marginTop": "10px"}
                 ),
             ], style={**card_style, "width": "100%", "marginTop": "10px"}),
-             html.Div([
+            html.Div([
                 html.Label([
-                            "Valor de compra del Dólar Oficial",
+                            "Valor de venta del Dólar Oficial",
                             html.Br(),  # Salto de línea
                             "(en ARS, según dolarapi.com):",
                             ], style={"fontWeight": "bold", "marginBottom": "5px", "display": 'block'}),
+                html.Button('Buscar Valor', id='get-dollar-value-button', n_clicks=0, className='btn btn-primary',
+                            style={'width': '100%', 'height': '40px', 'fontSize': '18px', 'marginTop': '10px'}),                            
                 dcc.Input(
                     id='dollar-value',
                     type='number',
-                    placeholder=metrics.get_dolar_argentina(),
-                    value = metrics.get_dolar_argentina(),
+                    placeholder='Valor',
+                    # placeholder=metrics.get_dolar_argentina(),
+                    # value = metrics.get_dolar_argentina(),
                     min=0,
                     step=1,
                     style={"width": "50%", "marginTop": "10px", "height": "40px", "fontSize": "18px"}
@@ -63,6 +66,27 @@ def serve_layout():
                 html.Div(id='output-data-upload'),  # Placeholder for upload feedback
                 dcc.Store(id='mp-data-store')
             ], style={**card_style, "width": "100%"}),
+            html.Div([
+                html.Label("Cargar datos de Mongo DB", 
+                           style ={"fontWeight": "bold", "marginBottom": "5px"}),
+                html.Button('Cargar datos', id='load-mongo-button', n_clicks=0, className='btn btn-primary',
+                            style={'width': '100%', 'height': '40px', 'fontSize': '18px', 'marginTop': '10px'}),
+                html.Div(id='carga-data-mongo'),  # Placeholder for upload feedback
+                dcc.Store(id='stripe-tme-monthly-subs-store'),
+                dcc.Store(id='stripe-tme-monthly-canceled-subs-store'),
+                dcc.Store(id='stripe-tme-monthly-incomplete-subs-store'),
+                dcc.Store(id='tgo-monthly-subs-store'),
+                dcc.Store(id='tgo-monthly-canceled-subs-store'),
+                dcc.Store(id='tgo-monthly-incomplete-subs-store'),
+                dcc.Store(id='neto-stripe-tme-subs-store'),
+                dcc.Store(id='neto-tgo-subs-store'),
+                dcc.Store(id='stripe-creation-by-country-store'),
+                dcc.Store(id='stripe-cancelation-by-country-store'),
+                dcc.Store(id='succeeded-stripe-payments-store'),
+                dcc.Store(id='total-stripe-recargas-per-month-store'),
+                dcc.Store(id='mp-active-subs-per-plan-store'),
+                dcc.Store(id='mp-payments-store'),
+            ], style={**card_style, "width": "100%"}),
         ], style={"marginBottom": "20px", "display": 'flex'}),
 
         # Tarjetas de Métricas Resumen
@@ -72,16 +96,20 @@ def serve_layout():
                 html.Div(id='subs-summary', style={"fontSize": "16px"})
             ], style={**metric_card_style, "borderTop": f"4px solid {colors['stripe']}"}),
             html.Div([
-                html.H3("Ingresos último mes", style={"color": colors['primary'], "marginBottom": "15px"}),
+                html.H3("Ingresos último mes completo", style={"color": colors['primary'], "marginBottom": "15px"}),
                 html.Div(id='ingresos-summary', style={"fontSize": "16px"})
             ], style={**metric_card_style, "borderTop": f"4px solid {colors['primary']}"}),
         ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between", "marginBottom": "20px"}),
             
         # Pestañas para organizar gráficos
-        dcc.Tabs(id="tabs", value='tab-overview', children=[
-            dcc.Tab(label='Vista General', value='tab-overview', style=tab_style, selected_style=tab_selected_style),
-            dcc.Tab(label='Stripe', value='tab-stripe', style=tab_style, selected_style=tab_selected_style),
-            dcc.Tab(label='MercadoPago', value='tab-mp', style=tab_style, selected_style=tab_selected_style),
+        dcc.Tabs(id="tabs", value=None, 
+                 children=[
+            dcc.Tab(label='Vista General', 
+                    value='tab-overview', style=tab_style, selected_style=tab_selected_style),
+            dcc.Tab(label='Stripe', 
+                    value='tab-stripe', style=tab_style, selected_style=tab_selected_style),
+            dcc.Tab(label='MercadoPago', 
+                    value='tab-mp', style=tab_style, selected_style=tab_selected_style),
         ], style={"marginBottom": "20px"}),
         # Contenido de las pestañas
         html.Div(id='tab-content')
