@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pymongo import MongoClient
 import pandas as pd
 from config import (MONGO_URI, MONGO_DB_USERS, MONGO_COLLECTION_SUBSCRIPTIONS, 
                     MONGO_COLLECTION_STRIPE_UPDATES, MONGO_DB_TME_CHARTS, MONGO_COLLECTION_TGO_SUBS,
-                    MONGO_COLLECTION_MP_PAYMENTS)
+                    MONGO_COLLECTION_MP_PAYMENTS, MONGO_COLLECTION_STRIPE_PAYMENTS)
 from get_country import getCountry
 import requests
 
@@ -16,28 +16,17 @@ class SubscriptionMetrics:
         self.db_tme_charts = self.client[MONGO_DB_TME_CHARTS]
         self.tgo_subs = self.db_tme_charts[MONGO_COLLECTION_TGO_SUBS]
         self.mp_payments = self.db_tme_charts[MONGO_COLLECTION_MP_PAYMENTS]
+        self.stripe_payments = self.db_tme_charts[MONGO_COLLECTION_STRIPE_PAYMENTS]
 
-    def get_subs_data(self, start_date, end_date):
+    def get_subs_data(self):
         """
-        Busca las suscripciones en la Mongo, creadas en un rango de fechas
-        usando pipeline de agregación de Mongo DB
-         
-        Parámetros:
-        start_date (str): inicio del rango de fechas 
-        end_date (str): fin del rango de fechas
-    
+        Busca las suscripciones en la Mongo
         Retorna:
         subs: lista de documentos (diccionarios) encontrados
         """
-        start = datetime.strptime(start_date, '%Y-%m-%d')
-        end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-
         match_stage = {
             "$match": {
-                "start_date": {
-                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
-                },
+                "status": {"$ne": "cancelled"},
                 "is_experiment_gift":{"$exists": False},
                 "is_free_balance_error":{"$exists": False}
             }
@@ -85,7 +74,7 @@ class SubscriptionMetrics:
                 "status": 1,
                 "source": 1,
                 "reason": 1,
-                "start_date": { "$substr": ["$start_date", 0, 10] },
+                # "start_date": { "$substr": ["$start_date", 0, 10] },
                 "_id": 0
             }
         }
@@ -112,8 +101,8 @@ class SubscriptionMetrics:
         match_stage = {
             "$match": {
                 "timestamp": {
-                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000-04:00'),
-                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000-04:00')
+                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
+                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
                 },
                 "description": "subscription_cancelled"
             }
@@ -354,10 +343,23 @@ class SubscriptionMetrics:
         df_balance['balance'] = df_balance['creadas'] - df_balance['canceladas']
         return df_balance[["date", "country", "balance"]]
 
-    def get_stripe_subs_per_month(self):
+    def get_stripe_subs_per_month(self, start_date, end_date):
+        """"
+        Obtiene la cantidad de suscripciones de TranscribeMe creadas por mes desde Stripe.
+        """
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         valores = ['new_subscription', 'subscription_already_created']
-        query = {"description": {"$in": valores}, 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}}
-        proj = {"_id": 0, "timestamp": 1, "user_id":1, 'source':1, 'subscription_id':1, 'plan_id': 1, 'customerId': 1}
+        query = {
+            "description": {"$in": valores}, 
+            # 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}
+            "timestamp": {
+                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
+                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
+            },
+        }
+        proj = {"_id": 0, "timestamp": 1, "user_id":1, 'source':1, 
+                'subscription_id':1, 'plan_id': 1, 'customerId': 1}
 
         docs = self.stripe_updates.find(query, proj)
         mongo_info = pd.DataFrame(docs)
@@ -367,10 +369,25 @@ class SubscriptionMetrics:
             .groupby(mongo_info['timestamp'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('timestamp', 'size'))
         )
+        if not stripe_subs_per_month.empty:
+            print ("Stripe subs per month found")
         return stripe_subs_per_month
     
-    def get_canceladas_stripe_per_month(self):
-        query = {"description": "subscription_cancelled", 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}}
+    def get_canceladas_stripe_per_month(self, start_date, end_date):
+        """
+        Obtiene la cantidad de suscripciones de TranscribeMe canceladas por mes desde Stripe.
+        """
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+
+        query = {
+            "description": "subscription_cancelled", 
+            # 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}
+            "timestamp": {
+                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
+                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
+            },
+        }
         proj = {"_id": 0, "timestamp": 1,}
 
         docs = self.stripe_updates.find(query, proj)
@@ -382,10 +399,26 @@ class SubscriptionMetrics:
             .groupby(canceladas_mongo['timestamp'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('timestamp', 'size'))
         )
+        
+        if not canceladas_stripe_per_month.empty:
+            print ("Canceladas Stripe per month found")
         return canceladas_stripe_per_month
     
-    def get_incomplete_stripe_per_month(self):
-        query = {"description": "subscription_incomplete_expired", 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}}
+    def get_incomplete_stripe_per_month(self, start_date, end_date):
+        """
+        Obtiene la cantidad de suscripciones de TranscribeMe incompletas por mes desde Stripe.
+        """
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+        
+        query = {
+            "description": "subscription_incomplete_expired", 
+            # 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}
+            "timestamp": {
+                    "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
+                    "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
+            },
+        }
         proj = {"_id": 0, "timestamp": 1,}
 
         docs = self.stripe_updates.find(query, proj)
@@ -397,18 +430,20 @@ class SubscriptionMetrics:
             .groupby(incomplete_mongo['timestamp'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('timestamp', 'size'))
         )
+
+        if not incomplete_stripe_per_month.empty:
+            print ("Incomplete Stripe per month found")
         return incomplete_stripe_per_month
     
     def get_tgo_subs(self, selector = 'Total'):
         pipeline = [
-                    {"$project": {
+            {"$project": {
                          "_id": 0,
                          "status": 1,
                          "created": 1,
                          "ended_at": 1,
                          "plan": "$plan.nickname"}}
-                    ]
-
+        ]
         docs = self.tgo_subs.aggregate(pipeline)
         all_tgo_subs = pd.DataFrame(docs)
         
@@ -426,7 +461,6 @@ class SubscriptionMetrics:
         canceled_2025 = canceled[canceled['ended_at'] >= '2025-01-01'].copy()
         incomplete_2025 = incomplete[incomplete['ended_at']>= '2025-01-01'].copy()
         
-
         created_2025['created'] = pd.to_datetime(created_2025['created'], errors='coerce')
         tgo_2025_subs_per_month = (
             created_2025
@@ -447,6 +481,12 @@ class SubscriptionMetrics:
             .groupby(incomplete_2025['ended_at'].dt.to_period('M').dt.to_timestamp())
             .agg(count=('ended_at', 'size'))
         )
+        if not tgo_2025_subs_per_month.empty:
+            print ("TGO subs per month found")
+        if not tgo_canceled_per_month.empty:
+            print ("TGO canceled subs per month found")
+        if not tgo_incomplete_per_month.empty:
+            print ("TGO incomplete subs per month found")
         return tgo_2025_subs_per_month, tgo_canceled_per_month, tgo_incomplete_per_month
 
     def get_tme_active_stripe_subs(self):
@@ -467,9 +507,19 @@ class SubscriptionMetrics:
         total = self.subscriptions.count_documents(query)
         return total
     
-    def get_mp_income(self):
-        start_date = "2025-07-01"
-        end_date = "2025-08-01"
+    def get_last_month_mp_income(self):
+        # Fecha de hoy
+        today = date.today()
+
+        # Primer día del mes actual
+        first_day_this_month = today.replace(day=1)
+
+        # Primer día del mes pasado
+        first_day_last_month = (first_day_this_month - timedelta(days=1)).replace(day=1)
+
+        # Primer día de este mes = límite superior
+        start_date = first_day_last_month.strftime("%Y-%m-%d")
+        end_date = first_day_this_month.strftime("%Y-%m-%d")
         pipeline = [
             {"$match":{
                 "status": 'approved',
@@ -489,24 +539,86 @@ class SubscriptionMetrics:
         result = list(self.mp_payments.aggregate(pipeline))
         return result[0]["total"] if result else 0
     
-    def get_stripe_income(self):
+    def get_last_month_stripe_income(self):
         """
-        COMPLETAR
+        
         """
-        return 15000
+        # Fecha de hoy
+        today = date.today()
+
+        # Primer día del mes actual
+        first_day_this_month = today.replace(day=1)
+
+        # Primer día del mes pasado
+        first_day_last_month = (first_day_this_month - timedelta(days=1)).replace(day=1)
+
+        # Primer día de este mes = límite superior
+        start_date = first_day_last_month.strftime("%Y-%m-%d")
+        end_date = first_day_this_month.strftime("%Y-%m-%d")
+        pipeline = [
+            {"$match":{
+                "status": 'succeeded',
+                # 'currency': 'usd',
+                "created":{"$gte": start_date, "$lt": end_date}
+                }
+            },
+            {"$group":{
+                # "_id": None,
+                '_id': "$currency",
+                "total":{"$sum": "$amount"}
+                }
+            },
+            {"$project": {
+                'currency': '$_id',
+                "total":1
+                }
+            }
+        ]
+        cursor = self.stripe_payments.aggregate(pipeline)
+        df = pd.DataFrame(list(cursor))
+
+        # Conversión de monedas extranjera a USD
+        API_KEY = "7b7af54652e5c42dcaeabdb8"  
+
+        for idx, row in df.iterrows():
+            currency = row['currency'].upper()
+            amount = row['total']
+            if currency != 'USD':
+                try:
+                    url = f"https://v6.exchangerate-api.com/v6/{API_KEY}/pair/{currency}/USD/{amount}"
+                    response = requests.get(url)
+                    data = response.json()
+            
+                    if data['result'] == 'success':
+                        df.at[idx, 'total'] = data['conversion_result']
+                        df.at[idx, 'currency'] = 'USD'
+                    else:
+                        print(f"Error convirtiendo {currency}: {data}")
+                
+                except Exception as e:
+                    print(f"Error con {currency}: {e}")
+        total = float(df['total'].sum()) if not df.empty else 0
+        return total
     
+    def get_monthly_stripe_payments(self):
+        """
+        """
+        docs = self.stripe_payments.find()
+        all_payment_intents_created = pd.DataFrame(docs)
+        return all_payment_intents_created
+
     def get_dolar_argentina(self):
         # Api para obtener el precio del dólar oficial
         # "https://dolarapi.com/docs/argentina/operations/get-dolar-oficial.html"
         url = "https://dolarapi.com/v1/dolares/oficial"
         response = requests.get(url)
         if response.status_code == 200:
-            data = response.json()  # o .text según el caso
+            data = response.json()  
         else:
             print("Error:", response.status_code)
-            data = {"compra": "No se pudo extraer el valor del dólar, ingrese manualmente"}
-        valor_compra_oficial = data['compra']
-        return valor_compra_oficial
+            data = {"venta": "No se pudo extraer el valor del dólar, ingrese manualmente"}
+        valor_venta_oficial = data['venta']
+        return valor_venta_oficial
     
     def get_mp_planes(self):
         mp_planes = ['TranscribeMe Plus 10d', 'TranscribeMe Plus discount', 'TranscribeMe Plus 2',
@@ -533,6 +645,8 @@ class SubscriptionMetrics:
 
         docs = list(self.subscriptions.aggregate(pipeline))
         df = pd.DataFrame(docs)
+        if not df.empty:
+            print ("MP planes found")
         return df
     
     def process_mp_subscriptions_data(self, data):
@@ -623,6 +737,9 @@ class SubscriptionMetrics:
         if not result:
             print ("No se encontraron datos entre la fecha ingresada")
         df = pd.DataFrame(result)
+
+        if not df.empty:
+            print ("MP payments found")
         return df 
 
     def get_totales_por_mes(self, mp_df, stripe_creations_df, stripe_cancels_df, stripe_incomplete_df,
@@ -675,3 +792,140 @@ class SubscriptionMetrics:
         merged = merged.sort_values('month')
 
         return merged[['month', 'total_creations', 'total_cancellations', 'total_incomplete', 'net_total']]
+
+    def get_stripe_succeeded_subscription_payments (self, start, end):
+        pipeline = [
+            {"$match":{
+                "status": 'succeeded',
+                "created":{"$gte": start, "$lt": end},
+                'statement_descriptor': {"$ne": None},
+                }
+            },
+            {"$project": {
+                "_id":0,
+                "created":1,
+                "statement_descriptor":1,
+                "amount":1,
+                'currency':1
+                }
+            }
+        ]
+        result = list(self.stripe_payments.aggregate(pipeline))
+        if not result:
+            print ("No se encontraron datos entre la fecha ingresada")
+        df = pd.DataFrame(result)
+
+        descriptions = {
+            'Plan Basic': 1.5,
+            'Plan Plus': 30,
+            'Plan Business': 100,
+            'Plus RoW': 3.38,
+            'Telegram': 2.42,
+            'Plus US / ESP': 5.32,
+            'Plus RoW Anual': 27.55,
+            'Plus US / ESP Anual': 42.56,
+        }
+
+        # Invertir el diccionario: ahora mapea amount -> description
+        amount_to_desc = {v: k for k, v in descriptions.items()}
+
+        # Crear la nueva columna en df
+        df['description'] = df['amount'].map(amount_to_desc).fillna('Recarga')
+        if not df.empty:
+            print ("Stripe succeeded subscription payments found")
+        return df 
+    
+    def get_stripe_succeeded_extra_credit_payments (self, start, end):
+        pipeline = [
+            {"$match":{
+                "status": 'succeeded',
+                "created":{"$gte": start, "$lt": end},
+                "statement_descriptor": {"$eq": None},
+                }
+            },
+            {"$project": {
+                "_id":0,
+                "created":1,
+                "amount":1,
+                'currency':1
+                }
+            }
+        ]
+        result = list(self.stripe_payments.aggregate(pipeline))
+        if not result:
+            print ("No se encontraron datos entre la fecha ingresada")
+        df = pd.DataFrame(result)
+
+        df['created'] = pd.to_datetime(df['created'])
+        df_per_month = (
+            df
+            .groupby([df['created'].dt.to_period('M').dt.to_timestamp(), 'currency'])
+            .agg(income=('amount', 'sum'))
+            .reset_index()
+        )
+
+        API_KEY = "7b7af54652e5c42dcaeabdb8"  
+
+        for idx, row in df_per_month.iterrows():
+            currency = row['currency'].upper()
+            amount = row['income']
+            if currency != 'USD':
+                try:
+                    url = f"https://v6.exchangerate-api.com/v6/{API_KEY}/pair/{currency}/USD/{amount}"
+                    response = requests.get(url)
+                    data = response.json()
+            
+                    if data['result'] == 'success':
+                        df_per_month.at[idx, 'income'] = data['conversion_result']
+                        df_per_month.at[idx, 'currency'] = 'USD'
+                    else:
+                        print(f"Error convirtiendo {currency}: {data}")
+                
+                except Exception as e:
+                    print(f"Error con {currency}: {e}")
+
+        df_per_month['created'] = pd.to_datetime(df_per_month['created'])
+        df_per_month = (
+            df_per_month
+            .groupby(df_per_month['created'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('income', 'sum'))
+            .reset_index()
+        )
+        df_per_month['income'] = round(df_per_month['income'], 2)
+        if not df_per_month.empty:
+            print ("Stripe succeeded extra credit payments found")
+        return df_per_month 
+    
+
+    def total_income (self, mp_payments, stripe_subs_payments, extra_credit_income):
+        mp_income = mp_payments.copy()
+        stripe_subs_income = stripe_subs_payments.copy()
+        stripe_extra_income = extra_credit_income.copy()
+        dolar = self.get_dolar_argentina()
+        mp_income['date_approved'] = pd.to_datetime(mp_income['date_approved'])
+        stripe_subs_income['created'] = pd.to_datetime(stripe_subs_income['created'])
+        stripe_extra_income['created'] = pd.to_datetime(stripe_extra_income['created'])
+
+        mp_income_per_month = (
+            mp_income
+            .groupby(mp_income['date_approved'].dt.to_period('M').dt.to_timestamp())
+            .agg(mp_income=('transaction_amount', 'sum'))
+            .reset_index()
+        )
+        mp_income_per_month['mp_income'] = round(mp_income_per_month['mp_income'] / dolar, 2)
+
+        stripe_subs_income_per_month = (
+            stripe_subs_income
+            .groupby(stripe_subs_income['created'].dt.to_period('M').dt.to_timestamp())
+            .agg(stripe_subs_income=('amount', 'sum'))
+            .reset_index()
+        )
+        total = pd.merge(mp_income_per_month, stripe_subs_income_per_month, left_on='date_approved', right_on='created', how='outer')
+        total = pd.merge(total, stripe_extra_income, left_on='date_approved', right_on='created', how='outer')
+        total = total.fillna(0)
+        total['stripe_income'] = round(total['stripe_subs_income'] + total['income'], 2)
+        total['total_income'] = total['mp_income'] + total['stripe_subs_income'] + total['income']
+        total['total_income'] = round(total['total_income'], 2)
+        total = total[['date_approved', 'mp_income', 'stripe_subs_income', 'income', 'stripe_income','total_income']]
+        total = total.rename(columns={'date_approved': 'month', 'income': 'extra_credit_income'})   
+        return total
