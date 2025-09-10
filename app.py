@@ -9,7 +9,7 @@ from callbacks.tab_callbacks import register_tab_callbacks
 metrics = SubscriptionMetrics()
 
 # Crear la app con hoja de estilos externa
-app = Dash(__name__)
+app = Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Dashboard de Suscripciones- TranscribeMe"
 server = app.server  # Esto es importante para Gunicorn
 
