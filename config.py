@@ -17,3 +17,4 @@ MONGO_COLLECTION_STRIPE_UPDATES = "stripe-updates"   # para ver las cancelacione
 MONGO_DB_TME_CHARTS = 'TranscribeMe-charts'
 MONGO_COLLECTION_TGO_SUBS = 'tgo-subscriptions'
 MONGO_COLLECTION_MP_PAYMENTS = 'mp-payments'
+MONGO_COLLECTION_STRIPE_PAYMENTS = 'stripe-payments'
