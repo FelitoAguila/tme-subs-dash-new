@@ -576,3 +576,99 @@ def net_subscriptions_chart(df):
     fig.update_layout(title='Net Subscriptions', yaxis_title="Subscriptions", xaxis_title="Month",
                         yaxis_tickformat=',', title_x=0.5)
     return fig
+
+def tgo_income_chart (payments, selector = 'Total'):
+    df = payments[payments['statement_descriptor'] == 'TranscribeGo subscript'].copy()
+    df['created'] = pd.to_datetime(df['created'])
+    if selector == 'Total':
+        income_per_month = (
+            df
+            .groupby(df['created'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('amount', 'sum'))
+            .reset_index()
+        )
+    else:
+        income_per_month = (
+            df[df['description'] == selector].copy()
+            .groupby(df['created'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('amount', 'sum'))
+            .reset_index()
+        )
+
+    income_per_month['income'] = income_per_month['income'].round(2)
+    
+    fig = go.Figure()
+    # Income
+    fig.add_scatter(x=income_per_month["created"], y=income_per_month["income"], mode='lines+markers+text', 
+                line_shape='spline', name=f'{selector}', 
+                text=income_per_month["income"],  # Display the income values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(yaxis_title="Income", xaxis_title="Month",
+                        yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def tme_subs_income_chart (payments, selector = 'Total'):
+    df = payments[payments['statement_descriptor'] != 'Recarga'].copy()
+    df['created'] = pd.to_datetime(df['created'])
+    if selector == 'Total':
+        income_per_month = (
+            df
+            .groupby(df['created'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('amount', 'sum'))
+            .reset_index()
+        )
+    else:
+        income_per_month = (
+            df[df['description'] == selector].copy()
+            .groupby(df['created'].dt.to_period('M').dt.to_timestamp())
+            .agg(income=('amount', 'sum'))
+            .reset_index()
+        )
+
+    income_per_month['income'] = income_per_month['income'].round(2)
+    
+    fig = go.Figure()
+    # Income
+    fig.add_scatter(x=income_per_month["created"], y=income_per_month["income"], mode='lines+markers+text', 
+                line_shape='spline', name=f'{selector}', 
+                text=income_per_month["income"],  # Display the income values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(yaxis_title="Income", xaxis_title="Month", yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def total_stripe_recargas_per_month_chart(df):
+    fig = go.Figure()
+    # Created Stripe Subscriptions
+    fig.add_scatter(x=df['created'], y=df["income"], mode='lines+markers+text', 
+                line_shape='spline', name='Recargas', 
+                text=df["income"],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
+
+    fig.update_layout(yaxis_title="Income", xaxis_title="Month", yaxis_tickformat=',', title_x=0.5)
+    return fig
+
+def total_income_chart(total_income):
+    fig = go.Figure()
+    # Created Stripe Subscriptions
+    fig.add_scatter(x=total_income['month'], y=total_income['total_income'], mode='lines+markers+text', 
+                line_shape='spline', name='Total Income', 
+                text=total_income['total_income'],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#25C010"),marker=dict(size=4, symbol='circle'))
+    fig.add_scatter(x=total_income['month'], y=total_income['stripe_income'], mode='lines+markers+text', 
+                line_shape='spline', name='Stripe Income', 
+                text=total_income['stripe_income'],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#2419B4"),marker=dict(size=4, symbol='circle'))
+    fig.add_scatter(x=total_income['month'], y=total_income['mp_income'], mode='lines+markers+text', 
+                line_shape='spline', name='Mercado Pago Income', 
+                text=total_income['mp_income'],  # Display the count values as labels
+                textposition='top center',  # Position the labels above the markers
+                line=dict(color="#E9E636"),marker=dict(size=4, symbol='circle'))
+    fig.update_layout(title='Income (USD)', yaxis_title="Income", xaxis_title="Month", yaxis_tickformat=',', title_x=0.5)
+    return fig
