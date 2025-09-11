@@ -58,7 +58,8 @@ def serve_layout():
                             ], style ={"fontWeight": "bold", "marginBottom": "5px"}),
                 dcc.Upload(id='upload-data', 
                            children=html.Button('Cargar archivo', className='btn btn-primary'),
-                           multiple=False,  # Allow only one file
+                        #    multiple=False,  # Allow only one file
+                           multiple=True,
                            accept='.csv',   # Restrict to CSV files (adjust as needed)
                            style={'width': '100%', 'height': '60px', 'lineHeight': '60px', 'borderWidth': '1px',
                                   'borderStyle': 'dashed','borderRadius': '5px','textAlign': 'center','margin': '10px'}
