@@ -1,4 +1,5 @@
 # callbacks/tab_callbacks.py
+from importlib.resources import contents
 from dash import Input, Output, html, dcc, State, no_update
 from subs_metrics import SubscriptionMetrics
 import base64, io
@@ -39,26 +40,65 @@ def register_tab_callbacks(app):
         Input('upload-data', 'contents'),
         State('upload-data', 'filename')
     )
-    def handle_upload(contents, filename):
+    def handle_upload(contents, filenames):
         if contents is None:
             return no_update, ""
+        
+        # contents y filenames son listas si multiple=True
+        dataframes = []
     
         try:
-            # contents viene como "data:<mime>;base64,<contenido>"
-            content_type, content_string = contents.split(',')
-            decoded = base64.b64decode(content_string)
-        
-            # Convertimos a DataFrame
-            if filename.endswith('.csv'):
+            for content, filename in zip(contents, filenames):
+                if not filename.endswith('.csv'):
+                    return no_update, f"Formato no soportado para '{filename}'. Solo CSV permitidos."
+            
+                # Decodificar el contenido
+                content_type, content_string = content.split(',')
+                decoded = base64.b64decode(content_string)
+            
+                # Leer como DataFrame
                 df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
-            else:
-                return no_update, "Formato no soportado"
+                dataframes.append(df)
         
-            # Guardamos como dict para dcc.Store
-            return df.to_dict('records'), f"Archivo '{filename}' cargado correctamente. {len(df)} filas."
+            if not dataframes:
+                return no_update, "No se cargaron archivos válidos."
+        
+            # Concatenar todos los DataFrames (asumiendo mismas columnas)
+            combined_df = pd.concat(dataframes, ignore_index=True)
+
+            # NUEVO: Verificar y eliminar duplicados
+            num_dups = combined_df.duplicated().sum()  # Número de filas duplicadas
+            if num_dups > 0:
+                combined_df = combined_df.drop_duplicates()  # Elimina duplicados exactos
+                message_suffix = f" (se eliminaron {num_dups} filas duplicadas)"
+            else:
+                message_suffix = ""
+
+            # Guardar como dict para dcc.Store
+            return combined_df.to_dict('records'), (
+                f"{len(filenames)} archivos CSV cargados correctamente. "
+                f"Total: {len(combined_df)} filas."
+            )
     
         except Exception as e:
-            return no_update, f"Error al procesar el archivo: {str(e)}"
+            return no_update, f"Error al procesar los archivos: {str(e)}"
+    
+        # try:
+        #     # contents viene como "data:<mime>;base64,<contenido>"
+        #     content_type, content_string = contents.split(',')
+        #     decoded = base64.b64decode(content_string)
+        
+        #     # Convertimos a DataFrame
+        #     if filename.endswith('.csv'):
+        #         df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
+        #     else:
+        #         return no_update, "Formato no soportado"
+        
+        #     # Guardamos como dict para dcc.Store
+        #     return df.to_dict('records'), f"Archivo '{filename}' cargado correctamente. {len(df)} filas."
+    
+        # except Exception as e:
+        #     return no_update, f"Error al procesar el archivo: {str(e)}"
 
     # Callback para cargar datos de Mongo DB
     @app.callback(
