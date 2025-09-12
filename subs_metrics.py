@@ -578,7 +578,8 @@ class SubscriptionMetrics:
         df = pd.DataFrame(list(cursor))
 
         # Conversión de monedas extranjera a USD
-        API_KEY = "7b7af54652e5c42dcaeabdb8"  
+        # API_KEY = "7b7af54652e5c42dcaeabdb8"  
+        API_KEY = "ea24fd9fe9ec91d1cafdb47b"  
 
         for idx, row in df.iterrows():
             currency = row['currency'].upper()
