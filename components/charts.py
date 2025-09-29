@@ -411,50 +411,53 @@ def mp_net_subscriptions_chart(df):
     return fig
 
 def mp_unique_payments_per_month(df):
-    pagos_total = df.copy()
-    pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
-    mp_discount = pagos_total[pagos_total['description'] == 'single_payment_discount'].copy()
-    recargas_tokens = pagos_total[pagos_total['description'] == 'single_payment_C'].copy()
-    recargas_min = pagos_total[pagos_total['description'] == 'single_payment_T'].copy()
+    # Tomo solo los pagos únicos de all_mp_payments
+    pagos_unicos = df[df['operation_type']=='regular_payment'].copy()
+    # Transformo las fechas al formato que necesito para agrupar
+    pagos_unicos['date_created'] = pd.to_datetime(df['date_created'])
+    
+    mp_discount = pagos_unicos[pagos_unicos['description'] == 'single_payment_discount'].copy()
+    recargas_tokens = pagos_unicos[pagos_unicos['description'] == 'single_payment_C'].copy()
+    recargas_min = pagos_unicos[pagos_unicos['description'] == 'single_payment_T'].copy()
 
     mp_discount_per_month = (
         mp_discount
-        .groupby(mp_discount['date_approved'].dt.to_period('M').dt.to_timestamp())
-        .agg(count=('date_approved', 'size'))
+        .groupby(mp_discount['date_created'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_created', 'size'))
         .reset_index()
     )
 
     recargas_tokens_per_month = (
         recargas_tokens
-        .groupby(recargas_tokens['date_approved'].dt.to_period('M').dt.to_timestamp())
-        .agg(count=('date_approved', 'size'))
+        .groupby(recargas_tokens['date_created'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_created', 'size'))
         .reset_index()
     )
 
     recargas_min_per_month = (
         recargas_min
-        .groupby(recargas_min['date_approved'].dt.to_period('M').dt.to_timestamp())
-        .agg(count=('date_approved', 'size'))
+        .groupby(recargas_min['date_created'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_created', 'size'))
         .reset_index()
     )
 
     fig = go.Figure()
     # Suscripciones de 3 meses
-    fig.add_scatter(x=mp_discount_per_month["date_approved"], y=mp_discount_per_month["count"], mode='lines+markers+text', 
+    fig.add_scatter(x=mp_discount_per_month["date_created"], y=mp_discount_per_month["count"], mode='lines+markers+text', 
                 line_shape='spline', name='mp-3-meses', 
                 text=mp_discount_per_month["count"],  # Display the count values as labels
                 textposition='top center',  # Position the labels above the markers
                 line=dict(color="#2AA834"),marker=dict(size=4, symbol='circle'))
 
     # Recargas de tokens
-    fig.add_scatter(x=recargas_tokens_per_month["date_approved"], y=recargas_tokens_per_month["count"], mode='lines+markers+text', 
+    fig.add_scatter(x=recargas_tokens_per_month["date_created"], y=recargas_tokens_per_month["count"], mode='lines+markers+text', 
                 line_shape='spline', name='Recargas de tokens', 
                 text=recargas_tokens_per_month["count"],  # Display the count values as labels
                 textposition='top center',  # Position the labels above the markers
                 line=dict(color="#3116AA"),marker=dict(size=4, symbol='circle'))
 
     # Recargas de minutos
-    fig.add_scatter(x=recargas_min_per_month["date_approved"], y=recargas_min_per_month["count"], mode='lines+markers+text', 
+    fig.add_scatter(x=recargas_min_per_month["date_created"], y=recargas_min_per_month["count"], mode='lines+markers+text', 
                 line_shape='spline', name='Recargas de minutos', 
                 text=recargas_min_per_month["count"],  # Display the count values as labels
                 textposition='top center',  # Position the labels above the markers
@@ -466,20 +469,21 @@ def mp_unique_payments_per_month(df):
     return fig
 
 def mp_subscription_payments_per_month(df):
-    pagos_total = df.copy()
-    pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
-    suscripciones = pagos_total[pagos_total['description'].str.contains('TranscribeMe')].copy()
-
+    # Tomo solo las suscripciones de all_mp_payments
+    suscripciones = df[df['operation_type']=='recurring_payment'].copy()
+    # Transformo las fechas al formato que necesito para agrupar
+    suscripciones['date_created'] = pd.to_datetime(df['date_created'])
+    
     suscripciones_per_month = (
         suscripciones
-        .groupby(suscripciones['date_approved'].dt.to_period('M').dt.to_timestamp())
-        .agg(count=('date_approved', 'size'))
+        .groupby(suscripciones['date_created'].dt.to_period('M').dt.to_timestamp())
+        .agg(count=('date_created', 'size'))
         .reset_index()
     )
 
     fig = go.Figure()
     # Suscripciones
-    fig.add_scatter(x=suscripciones_per_month["date_approved"], y=suscripciones_per_month["count"], mode='lines+markers+text', 
+    fig.add_scatter(x=suscripciones_per_month["date_created"], y=suscripciones_per_month["count"], mode='lines+markers+text', 
                 line_shape='spline', name='Suscripciones', 
                 text=suscripciones_per_month["count"],  # Display the count values as labels
                 textposition='top center',  # Position the labels above the markers
@@ -491,7 +495,7 @@ def mp_subscription_payments_per_month(df):
     return fig
 
 def income_mp_per_month(df, selector = 'Total'):
-    pagos_total = df.copy()
+    pagos_total = df[df['status']=='approved'].copy()
 
     pagos_total['date_approved'] = pd.to_datetime(df['date_approved'])
 
