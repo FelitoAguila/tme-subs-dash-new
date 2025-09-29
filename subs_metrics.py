@@ -1,9 +1,16 @@
 from datetime import date, datetime, timedelta
 from pymongo import MongoClient
 import pandas as pd
-from config import (MONGO_URI, MONGO_DB_USERS, MONGO_COLLECTION_SUBSCRIPTIONS, 
-                    MONGO_COLLECTION_STRIPE_UPDATES, MONGO_DB_TME_CHARTS, MONGO_COLLECTION_TGO_SUBS,
-                    MONGO_COLLECTION_MP_PAYMENTS, MONGO_COLLECTION_STRIPE_PAYMENTS)
+from config import (
+    MONGO_URI, #string de conexión a la Mongo (solo lectura)
+    MONGO_DB_USERS, # base de datos Users
+    MONGO_COLLECTION_SUBSCRIPTIONS, # colección subscriptions
+    MONGO_COLLECTION_STRIPE_UPDATES, # colección stripe-updates
+    MONGO_DB_TME_CHARTS, # base de datos TranscribeMe-charts
+    MONGO_COLLECTION_TGO_SUBS, # colección de tgo-subscriptions
+    MONGO_COLLECTION_MP_PAYMENTS, # colección mp-payments
+    MONGO_COLLECTION_STRIPE_PAYMENTS # colección stripe-payments
+    )
 from get_country import getCountry
 import requests
 
@@ -578,8 +585,7 @@ class SubscriptionMetrics:
         df = pd.DataFrame(list(cursor))
 
         # Conversión de monedas extranjera a USD
-        # API_KEY = "7b7af54652e5c42dcaeabdb8"  
-        API_KEY = "ea24fd9fe9ec91d1cafdb47b"  
+        API_KEY = "7b7af54652e5c42dcaeabdb8"  
 
         for idx, row in df.iterrows():
             currency = row['currency'].upper()
@@ -722,14 +728,16 @@ class SubscriptionMetrics:
     def get_mp_payments(self, start, end):
         pipeline = [
             {"$match":{
-                "status": 'approved',
-                "date_approved":{"$gte": start, "$lt": end}
+                "date_created":{"$gte": start, "$lte": end}
                 }
             },
             {"$project": {
                 "_id":0,
+                'date_created':1,
                 "date_approved":1,
                 "description":1,
+                'operation_type':1,
+                'status': 1,
                 "transaction_amount":1
                 }
             }
