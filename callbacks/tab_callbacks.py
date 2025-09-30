@@ -452,11 +452,23 @@ def register_tab_callbacks(app):
                 html.Div([
                     # Pagos de suscripciones por mes
                     html.Div([
-                        dcc.Graph(figure=fig_mp_subs_payments_per_month)
+                        html.H3("Pagos recibidos por suscripciones", style={'textAlign': 'center'}), 
+                        dcc.RadioItems(id = 'mp-subs-payments-selector', 
+                                       options = ['Total', 'Aprobados', 'Rechazados'], 
+                                       value = 'Total', inline=True, 
+                                       labelStyle={'margin-right': '20px'}, 
+                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Graph(figure=fig_mp_subs_payments_per_month, id='mp-subs-payments')
                     ], style=graph_card_style),
                     # Pagos únicos por mes
                     html.Div([
-                        dcc.Graph(figure=fig_unique_mp_payments_per_month)
+                        html.H3("Pagos únicos recibidos", style={'textAlign': 'center'}), 
+                        dcc.RadioItems(id = 'mp-unique-payments-selector', 
+                                       options = ['Total', 'Aprobados', 'Rechazados'], 
+                                       value = 'Total', inline=True, 
+                                       labelStyle={'margin-right': '20px'}, 
+                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Graph(figure=fig_unique_mp_payments_per_month, id='mp-unique-payments')
                     ], style=graph_card_style),
                 ],style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
 
@@ -493,6 +505,30 @@ def register_tab_callbacks(app):
     def update_mp_income(start_date, end_date, selector):
         all_mp_payments = metrics.get_mp_payments(start_date, end_date)
         fig = income_mp_per_month(all_mp_payments, selector)
+        return fig
+    
+    # Callback del chart de Pagos por suscripciones de MP
+    @app.callback(
+        Output('mp-subs-payments', 'figure'),
+        Input('date-range', 'start_date'),
+        Input('date-range', 'end_date'),
+        Input('mp-subs-payments-selector', 'value')
+    )
+    def update_mp_subs_payments(start_date, end_date, selector):
+        all_mp_payments = metrics.get_mp_payments(start_date, end_date)
+        fig = mp_subscription_payments_per_month(all_mp_payments, selector)
+        return fig
+    
+    # Callback del chart de Pagos únicos de MP
+    @app.callback(
+        Output('mp-unique-payments', 'figure'),
+        Input('date-range', 'start_date'),
+        Input('date-range', 'end_date'),
+        Input('mp-unique-payments-selector', 'value')
+    )
+    def update_mp_unique_payments(start_date, end_date, selector):
+        all_mp_payments = metrics.get_mp_payments(start_date, end_date)
+        fig = mp_unique_payments_per_month(all_mp_payments, selector)
         return fig
 
     # Callback del chart de Planes de TGO
