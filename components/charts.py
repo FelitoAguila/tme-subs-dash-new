@@ -410,11 +410,17 @@ def mp_net_subscriptions_chart(df):
                         yaxis_tickformat=',', title_x=0.5)
     return fig
 
-def mp_unique_payments_per_month(df):
+def mp_unique_payments_per_month(df, selector = 'Total'):
     # Tomo solo los pagos únicos de all_mp_payments
     pagos_unicos = df[df['operation_type']=='regular_payment'].copy()
     # Transformo las fechas al formato que necesito para agrupar
     pagos_unicos['date_created'] = pd.to_datetime(df['date_created'])
+
+    # Selección de pagos
+    if selector == 'Aprobados':
+        pagos_unicos = pagos_unicos[pagos_unicos['status']=='approved']
+    elif selector == 'Rechazados':
+        pagos_unicos = pagos_unicos[pagos_unicos['status']=='rejected']
     
     mp_discount = pagos_unicos[pagos_unicos['description'] == 'single_payment_discount'].copy()
     recargas_tokens = pagos_unicos[pagos_unicos['description'] == 'single_payment_C'].copy()
@@ -464,15 +470,21 @@ def mp_unique_payments_per_month(df):
                 line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
 
 
-    fig.update_layout(title=f"Pagos únicos Mercado Pago", yaxis_title="Pagos", xaxis_title="Month",
+    fig.update_layout(yaxis_title="Pagos", xaxis_title="Month",
                         yaxis_tickformat=',', title_x=0.5)
     return fig
 
-def mp_subscription_payments_per_month(df):
+def mp_subscription_payments_per_month(df, selector = 'Total'):
     # Tomo solo las suscripciones de all_mp_payments
     suscripciones = df[df['operation_type']=='recurring_payment'].copy()
     # Transformo las fechas al formato que necesito para agrupar
     suscripciones['date_created'] = pd.to_datetime(df['date_created'])
+
+    # Selección de pagos
+    if selector == 'Aprobados':
+        suscripciones = suscripciones[suscripciones['status']=='approved']
+    elif selector == 'Rechazados':
+        suscripciones = suscripciones[suscripciones['status']=='rejected']
     
     suscripciones_per_month = (
         suscripciones
@@ -490,7 +502,7 @@ def mp_subscription_payments_per_month(df):
                 line=dict(color="#23979B"),marker=dict(size=4, symbol='circle'))
 
 
-    fig.update_layout(title=f"Pagos por suscripciones en Mercado Pago", yaxis_title="Suscripciones", xaxis_title="Month",
+    fig.update_layout(yaxis_title="Pagos", xaxis_title="Month",
                         yaxis_tickformat=',', title_x=0.5)
     return fig
 
