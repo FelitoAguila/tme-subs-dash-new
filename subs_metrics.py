@@ -873,7 +873,7 @@ class SubscriptionMetrics:
             .reset_index()
         )
 
-        API_KEY = "7b7af54652e5c42dcaeabdb8"  
+        API_KEY = "ea24fd9fe9ec91d1cafdb47b"  
 
         for idx, row in df_per_month.iterrows():
             currency = row['currency'].upper()
