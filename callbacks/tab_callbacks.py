@@ -270,7 +270,7 @@ def register_tab_callbacks(app):
             # Asignando provider: "mp" a las suscripciones en MP sin provider
             full_data = metrics.assign_provider_default(data_with_countries)
             active_subs_df = metrics.subs_all(full_data, status=["active", "authorized"], provider = "all", country="all", source = "all").groupby(['provider', 'country'])['count'].sum().reset_index()
-            inactive_subs = metrics.subs_all(full_data, provider = "all", status=["paused", "incomplete", "past_due"], country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
+            inactive_subs = metrics.subs_all(full_data, provider = "all", status=["paused", "incomplete", "past_due", "unpaid"], country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
             
             # Gráfico de suscripciones totales
             fig_total_subs = total_subscriptions_chart(total_df)
