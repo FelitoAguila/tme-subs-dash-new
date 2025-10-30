@@ -6,8 +6,6 @@ load_dotenv()
 
 # Configuración de MongoDB
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-MONGO_DB_ANALYTICS = 'Analytics'
-MONGO_COLLECTION_DAU = 'dau'
 
 # Configuración para métricas de suscripciones
 MONGO_DB_USERS = 'Users'
@@ -18,3 +16,11 @@ MONGO_DB_TME_CHARTS = 'TranscribeMe-charts'
 MONGO_COLLECTION_TGO_SUBS = 'tgo-subscriptions'
 MONGO_COLLECTION_MP_PAYMENTS = 'mp-payments'
 MONGO_COLLECTION_STRIPE_PAYMENTS = 'stripe-payments'
+
+# Configuración para métricas de TGO
+MONGO_DB_TGO = 'B2B'
+MONGO_COLLECTION_ONBOARDING_TGO = 'onboardings'
+MONGO_COLLECTION_TGO_CALLS = 'transcribego-calls'
+
+# API KEY exchange rates
+API_KEY = os.getenv("API_KEY_PROD", "")
