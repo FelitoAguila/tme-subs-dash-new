@@ -1,6 +1,8 @@
 from datetime import date, datetime, timedelta
 from pymongo import MongoClient
 import pandas as pd
+from get_country import getCountry
+import requests
 from config import (
     MONGO_URI, #string de conexión a la Mongo (solo lectura)
     MONGO_DB_USERS, # base de datos Users
@@ -9,10 +11,13 @@ from config import (
     MONGO_DB_TME_CHARTS, # base de datos TranscribeMe-charts
     MONGO_COLLECTION_TGO_SUBS, # colección de tgo-subscriptions
     MONGO_COLLECTION_MP_PAYMENTS, # colección mp-payments
-    MONGO_COLLECTION_STRIPE_PAYMENTS # colección stripe-payments
+    MONGO_COLLECTION_STRIPE_PAYMENTS, # colección stripe-payments,
+    MONGO_DB_TGO, # base de datos B2B
+    MONGO_COLLECTION_ONBOARDING_TGO, # colección onboardings
+    MONGO_COLLECTION_TGO_CALLS, # colección transcribego-calls
+    API_KEY, # API KEY exchange rates
     )
-from get_country import getCountry
-import requests
+
 
 class SubscriptionMetrics:
     def __init__(self):
@@ -24,6 +29,9 @@ class SubscriptionMetrics:
         self.tgo_subs = self.db_tme_charts[MONGO_COLLECTION_TGO_SUBS]
         self.mp_payments = self.db_tme_charts[MONGO_COLLECTION_MP_PAYMENTS]
         self.stripe_payments = self.db_tme_charts[MONGO_COLLECTION_STRIPE_PAYMENTS]
+        self.db_tgo = self.client[MONGO_DB_TGO]
+        self.tgo_onboardings = self.db_tgo[MONGO_COLLECTION_ONBOARDING_TGO]
+        self.tgo_calls = self.db_tgo[MONGO_COLLECTION_TGO_CALLS]
 
     def get_subs_data(self):
         """
@@ -81,7 +89,6 @@ class SubscriptionMetrics:
                 "status": 1,
                 "source": 1,
                 "reason": 1,
-                # "start_date": { "$substr": ["$start_date", 0, 10] },
                 "_id": 0
             }
         }
@@ -359,7 +366,6 @@ class SubscriptionMetrics:
         valores = ['new_subscription', 'subscription_already_created']
         query = {
             "description": {"$in": valores}, 
-            # 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}
             "timestamp": {
                     "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
                     "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
@@ -389,7 +395,6 @@ class SubscriptionMetrics:
 
         query = {
             "description": "subscription_cancelled", 
-            # 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}
             "timestamp": {
                     "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
                     "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
@@ -420,7 +425,6 @@ class SubscriptionMetrics:
         
         query = {
             "description": "subscription_incomplete_expired", 
-            # 'timestamp': {"$gte": "2025-01-01T00:00:00Z"}
             "timestamp": {
                     "$gte": start.strftime('%Y-%m-%dT00:00:00.000Z'),
                     "$lt": end.strftime('%Y-%m-%dT00:00:00.000Z')
@@ -454,12 +458,29 @@ class SubscriptionMetrics:
         docs = self.tgo_subs.aggregate(pipeline)
         all_tgo_subs = pd.DataFrame(docs)
         
+        # Planes viejos
         if selector == 'Plan Basic':
             all_tgo_subs = all_tgo_subs[all_tgo_subs['plan']=='Basic']
         elif selector == 'Plan Plus':
             all_tgo_subs = all_tgo_subs[all_tgo_subs['plan']=='Plus']
         elif selector == 'Plan Business':
             all_tgo_subs = all_tgo_subs[all_tgo_subs['plan']=='Business']
+        
+        # Planes nuevos mensuales
+        elif selector == 'Basic-monthly':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan'] == 'transcribego-basic-month']
+        elif selector == 'Plus-monthly':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan'] == 'transcribego-plus-month']
+        elif selector == 'Unlimited-monthly':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan'] == 'transcribego-unlimited-month']
+        
+        # Planes nuevos anuales
+        elif selector == 'Basic-yearly':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan'] == 'transcribego-basic-year']
+        elif selector == 'Plus-yearly':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan'] == 'transcribego-plus-year']
+        elif selector == 'Unlimited-yearly':
+            all_tgo_subs = all_tgo_subs[all_tgo_subs['plan'] == 'transcribego-unlimited-year']
 
         canceled = all_tgo_subs[all_tgo_subs['status'] == 'canceled'].copy()
         incomplete = all_tgo_subs[all_tgo_subs['status'] == 'incomplete_expired'].copy()
@@ -565,12 +586,10 @@ class SubscriptionMetrics:
         pipeline = [
             {"$match":{
                 "status": 'succeeded',
-                # 'currency': 'usd',
                 "created":{"$gte": start_date, "$lt": end_date}
                 }
             },
             {"$group":{
-                # "_id": None,
                 '_id': "$currency",
                 "total":{"$sum": "$amount"}
                 }
@@ -585,8 +604,6 @@ class SubscriptionMetrics:
         df = pd.DataFrame(list(cursor))
 
         # Conversión de monedas extranjera a USD
-        API_KEY = "7b7af54652e5c42dcaeabdb8"  
-
         for idx, row in df.iterrows():
             currency = row['currency'].upper()
             amount = row['total']
@@ -828,6 +845,12 @@ class SubscriptionMetrics:
             'Plan Basic': 1.5,
             'Plan Plus': 30,
             'Plan Business': 100,
+            'Basic-monthly': 2.99,
+            'Plus-monthly': 15,
+            'Unlimited-monthly': 19.99,
+            'Basic-yearly': 26.99,
+            'Plus-yearly': 135,
+            'Unlimited-yearly': 179.99,
             'Plus RoW': 3.38,
             'Telegram': 2.42,
             'Plus US / ESP': 5.32,
@@ -872,9 +895,7 @@ class SubscriptionMetrics:
             .agg(income=('amount', 'sum'))
             .reset_index()
         )
-
-        API_KEY = "ea24fd9fe9ec91d1cafdb47b"  
-
+        # Conversión de monedas extranjera a USD
         for idx, row in df_per_month.iterrows():
             currency = row['currency'].upper()
             amount = row['income']
@@ -929,8 +950,9 @@ class SubscriptionMetrics:
             .agg(stripe_subs_income=('amount', 'sum'))
             .reset_index()
         )
-        total = pd.merge(mp_income_per_month, stripe_subs_income_per_month, left_on='date_approved', right_on='created', how='outer')
-        total = pd.merge(total, stripe_extra_income, left_on='date_approved', right_on='created', how='outer')
+        
+        total = pd.merge(stripe_subs_income_per_month, stripe_extra_income, on='created', how='outer')
+        total = pd.merge(mp_income_per_month, total, left_on='date_approved', right_on='created', how='outer')
         total = total.fillna(0)
         total['stripe_income'] = round(total['stripe_subs_income'] + total['income'], 2)
         total['total_income'] = total['mp_income'] + total['stripe_subs_income'] + total['income']
@@ -938,3 +960,25 @@ class SubscriptionMetrics:
         total = total[['date_approved', 'mp_income', 'stripe_subs_income', 'income', 'stripe_income','total_income']]
         total = total.rename(columns={'date_approved': 'month', 'income': 'extra_credit_income'})   
         return total
+    
+    def get_tgo_onboardings_info(self):
+        pipeline = [
+            {"$project":{
+                '_id': 0,
+                'createdAt':1,
+                'useCase':1,
+                'role':1,
+                'firstProject':1,
+                'howDidYouHear':1
+                }
+            }
+        ]
+        docs = list (self.tgo_onboardings.aggregate(pipeline))
+        df = pd.DataFrame(docs)
+        if not df.empty:
+            print ("TGO onboardings found")
+            return df
+        else:
+            print ('No TGO onboardings found')
+            return pd.DataFrame() 
+
