@@ -28,6 +28,7 @@ def serve_layout():
                     start_date=date(2025, 1, 1),
                     end_date=date.today(),
                     display_format='YYYY-MM-DD',
+                    initial_visible_month = date.today(),
                     style={"width": "100%","marginTop": "10px"}
                 ),
             ], style={**card_style, "width": "100%", "marginTop": "10px"}),
@@ -111,6 +112,8 @@ def serve_layout():
                     value='tab-stripe', style=tab_style, selected_style=tab_selected_style),
             dcc.Tab(label='MercadoPago', 
                     value='tab-mp', style=tab_style, selected_style=tab_selected_style),
+            dcc.Tab(label='TranscribeGo',
+                    value = 'tab-tgo', style=tab_style, selected_style=tab_selected_style),
         ], style={"marginBottom": "20px"}),
         # Contenido de las pestañas
         html.Div(id='tab-content')
