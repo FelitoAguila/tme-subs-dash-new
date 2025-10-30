@@ -1,6 +1,6 @@
 # callbacks/tab_callbacks.py
 from importlib.resources import contents
-from dash import Input, Output, html, dcc, State, no_update
+from dash import Input, Output, html, dcc, State, no_update, dash_table
 from subs_metrics import SubscriptionMetrics
 import base64, io
 import traceback
@@ -25,9 +25,10 @@ from components.charts import (
     tgo_income_chart,
     tme_subs_income_chart,
     total_stripe_recargas_per_month_chart,
-    total_income_chart
+    total_income_chart,
+    plot_tgo_onboardings,
+    table_tgo_onboardings
 )
-
 
 metrics = SubscriptionMetrics()
 
@@ -83,22 +84,6 @@ def register_tab_callbacks(app):
         except Exception as e:
             return no_update, f"Error al procesar los archivos: {str(e)}"
     
-        # try:
-        #     # contents viene como "data:<mime>;base64,<contenido>"
-        #     content_type, content_string = contents.split(',')
-        #     decoded = base64.b64decode(content_string)
-        
-        #     # Convertimos a DataFrame
-        #     if filename.endswith('.csv'):
-        #         df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
-        #     else:
-        #         return no_update, "Formato no soportado"
-        
-        #     # Guardamos como dict para dcc.Store
-        #     return df.to_dict('records'), f"Archivo '{filename}' cargado correctamente. {len(df)} filas."
-    
-        # except Exception as e:
-        #     return no_update, f"Error al procesar el archivo: {str(e)}"
 
     # Callback para cargar datos de Mongo DB
     @app.callback(
@@ -270,7 +255,7 @@ def register_tab_callbacks(app):
             # Asignando provider: "mp" a las suscripciones en MP sin provider
             full_data = metrics.assign_provider_default(data_with_countries)
             active_subs_df = metrics.subs_all(full_data, status=["active", "authorized"], provider = "all", country="all", source = "all").groupby(['provider', 'country'])['count'].sum().reset_index()
-            inactive_subs = metrics.subs_all(full_data, provider = "all", status=["paused", "incomplete", "past_due", "unpaid"], country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
+            inactive_subs = metrics.subs_all(full_data, provider = "all", status=["paused", "incomplete", "past_due", 'unpaid'], country="all", source="all").groupby(['status', 'country'])['count'].sum().reset_index()
             
             # Gráfico de suscripciones totales
             fig_total_subs = total_subscriptions_chart(total_df)
@@ -375,11 +360,23 @@ def register_tab_callbacks(app):
                 html.Div([
                     html.Div([
                         html.H3("Stripe TranscribeGo Subscriptions", style={'textAlign': 'center'}), 
-                        dcc.RadioItems(id = 'tgo-subs-selector', 
-                                       options = ['Total', 'Plan Basic', 'Plan Plus','Plan Business'], 
-                                       value = 'Total', inline=True, 
-                                       labelStyle={'margin-right': '20px'}, 
-                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Dropdown(id = 'tgo-subs-selector',
+                                    options=[
+                                        {'label': 'Total', 'value': 'Total'},
+                                        {'label': 'Plan Basic', 'value': 'Plan Basic'},
+                                        {'label': 'Plan Plus', 'value': 'Plan Plus'},
+                                        {'label': 'Plan Business', 'value': 'Plan Business'},
+                                        {'label': 'Basic-monthly', 'value': 'Basic-monthly'},
+                                        {'label': 'Plus-monthly', 'value': 'Plus-monthly'},
+                                        {'label': 'Unlimited-monthly', 'value': 'Unlimited-monthly'},
+                                        {'label': 'Basic-yearly', 'value': 'Basic-yearly'},
+                                        {'label': 'Plus-yearly', 'value': 'Plus-yearly'},
+                                        {'label': 'Unlimited-yearly', 'value': 'Unlimited-yearly'}
+                                    ],
+                                    value='Total',
+                                    clearable=False,
+                                    style={'marginTop': '10px', 'textAlign': 'center'},
+                                ),                                       
                         dcc.Graph(figure=tgo_subs_chart, id = 'tgo-subs')
                     ], style=graph_card_style),
                     html.Div([
@@ -390,12 +387,23 @@ def register_tab_callbacks(app):
                 html.Div([
                     html.Div([
                         html.H3("TranscribeGo Income", style={'textAlign': 'center'}), 
-                        dcc.RadioItems(id = 'tgo-income-selector', 
-                                       options = ['Total', 'Plan Basic', 'Plan Plus',
-                                                  'Plan Business'], 
-                                       value = 'Total', inline=True, 
-                                       labelStyle={'margin-right': '20px'}, 
-                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Dropdown(id='tgo-income-selector',
+                                    options=[
+                                        {'label': 'Total', 'value': 'Total'},
+                                        {'label': 'Plan Basic', 'value': 'Plan Basic'},
+                                        {'label': 'Plan Plus', 'value': 'Plan Plus'},
+                                        {'label': 'Plan Business', 'value': 'Plan Business'},
+                                        {'label': 'Basic-monthly', 'value': 'Basic-monthly'},
+                                        {'label': 'Plus-monthly', 'value': 'Plus-monthly'},
+                                        {'label': 'Unlimited-monthly', 'value': 'Unlimited-monthly'},
+                                        {'label': 'Basic-yearly', 'value': 'Basic-yearly'},
+                                        {'label': 'Plus-yearly', 'value': 'Plus-yearly'},
+                                        {'label': 'Unlimited-yearly', 'value': 'Unlimited-yearly'}
+                                    ],
+                                    value='Total',
+                                    clearable=False,
+                                    style={'marginTop': '10px', 'textAlign': 'center'},
+                                ),
                         dcc.Graph(figure=tgo_income_fig, id = 'tgo-income')
                     ], style=graph_card_style),
                     html.Div([
@@ -494,7 +502,45 @@ def register_tab_callbacks(app):
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
+        
+        elif tab == 'tab-tgo':
+            # ---------------- GRAFICOS DE TGO ------------------------------
+            # Onboardings de TGO por mes
+            tgo_onboardings_df = metrics.get_tgo_onboardings_info()
+            fig_tgo_onboardings = plot_tgo_onboardings(tgo_onboardings_df)
+            # table = table_tgo_onboardings(tgo_onboardings_df)
+
+            return html.Div([
+                # Onboardings de TGO
+                html.Div([
+                    html.Div([
+                        html.H3("Onboarding TGO", style={'textAlign': 'center'}), 
+                        dcc.RadioItems(id = 'tgo-onboarding-selector', 
+                                       options = ['Role', 'Use Case', 'First Project','How Did You Hear'], 
+                                       value = 'Role', inline=True, 
+                                       labelStyle={'margin-right': '20px'}, 
+                                       style={'marginTop': '10px', 'textAlign': 'center'}), 
+                        dcc.Graph(figure=fig_tgo_onboardings, id= 'tgo-onboarding-chart')
+                    ], style=graph_card_style),
+                    html.Div([
+                        html.H3("Detalle de Onboardings TGO", style={'textAlign': 'center'}), 
+                        html.Div(id='onboardings-table')
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+            ])
     
+    # Callback de Onboardings de TGO
+    @app.callback(
+        Output('tgo-onboarding-chart', 'figure'),
+        Output('onboardings-table', 'children'),
+        Input('tgo-onboarding-selector', 'value')
+    )
+    def update_tgo_onboarding(selector):
+        tgo_onboardings_df = metrics.get_tgo_onboardings_info()
+        fig = plot_tgo_onboardings(tgo_onboardings_df, selector)
+        table = table_tgo_onboardings(tgo_onboardings_df, selector)
+        return fig, table
+
     # Callback del chart de Ingresos de MP
     @app.callback(
         Output('ingresos-mp', 'figure'),
