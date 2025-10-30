@@ -3,96 +3,9 @@ import plotly.graph_objs as go
 import plotly.express as px
 from style.styles import colors
 import pandas as pd
+from dash import dash_table
 
-def create_bar_chart(data, title, x_label, y_label, color):
-    fig = go.Figure(data=[go.Bar(
-        x=list(data.keys()), 
-        y=list(data.values()),
-        marker_color=color
-    )])
-    fig.update_layout(
-        title_text=title,
-        xaxis_title=x_label,
-        yaxis_title=y_label,
-        plot_bgcolor=colors['light_gray'],
-        paper_bgcolor=colors['card_bg'],
-        font=dict(color=colors['text']),
-        margin=dict(l=40, r=40, t=50, b=40),
-    )
-    return fig
-
-def create_mp_type_charts(mp_types_data):
-    # Ordenar por cantidad de mayor a menor
-    sorted_data = sorted(mp_types_data, key=lambda x: x['cantidad'], reverse=True)
-    
-    # Separar los 3 mayores y el resto
-    top_three = sorted_data[:3]
-    others = sorted_data[3:]
-    
-    # Colores para los gráficos
-    top_colors = ['#009EE3', '#00C2FF', '#36D4FF']
-    other_colors = px.colors.qualitative.Pastel1[:len(others)]
-    
-    # Gráfico para los 3 mayores
-    fig_top = go.Figure()
-    for i, item in enumerate(top_three):
-        fig_top.add_trace(go.Bar(
-            x=['Top 3'],
-            y=[item['cantidad']],
-            name=item['tipo'],
-            marker_color=top_colors[i],
-            text=item['cantidad'],
-            textposition='auto',
-        ))
-    
-    fig_top.update_layout(
-        title_text="Top 3 Suscripciones MercadoPago por Tipo",
-        yaxis_title="Cantidad",
-        plot_bgcolor=colors['light_gray'],
-        paper_bgcolor=colors['card_bg'],
-        font=dict(color=colors['text']),
-        margin=dict(l=40, r=40, t=50, b=40),
-        barmode='stack',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.3,
-            xanchor="center",
-            x=0.5
-        ),
-    )
-    
-    # Gráfico para el resto
-    fig_others = go.Figure()
-    for i, item in enumerate(others):
-        fig_others.add_trace(go.Bar(
-            x=['Otros Tipos'],
-            y=[item['cantidad']],
-            name=item['tipo'],
-            marker_color=other_colors[i % len(other_colors)],
-            text=item['cantidad'],
-            textposition='auto',
-        ))
-    
-    fig_others.update_layout(
-        title_text="Otras Suscripciones MercadoPago por Tipo",
-        yaxis_title="Cantidad",
-        plot_bgcolor=colors['light_gray'],
-        paper_bgcolor=colors['card_bg'],
-        font=dict(color=colors['text']),
-        margin=dict(l=40, r=40, t=50, b=40),
-        barmode='stack',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.5,  # Ajustar según la cantidad de elementos
-            xanchor="center",
-            x=0.5
-        ),
-    )
-    
-    return fig_top, fig_others
-
+# ============ CHART FUNCTIONS ============================
 
 def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x = "date", y = "count", bar_width_days=None):
     """
@@ -187,126 +100,6 @@ def create_stacked_bar_chart(data_df, stack_column, title, x_label, y_label, x =
         
     return fig
 
-def plot_subscription_balance(df, title):
-    """
-    Genera un gráfico de barras apiladas por país y una línea del balance total por fecha.
-
-    Parámetros:
-    df (DataFrame): debe contener las columnas 'date', 'country' y 'balance'
-
-    Retorna:
-    Una figura de Plotly
-    """
-
-    # Balance total por fecha
-    df_total = df.groupby('date')['balance'].sum().reset_index()
-
-    # Crear figura con barras apiladas
-    fig = go.Figure()
-
-    # Añadir barras por país
-    for country in df['country'].unique():
-        df_country = df[df['country'] == country]
-        fig.add_trace(go.Bar(
-            x=df_country['date'],
-            y=df_country['balance'],
-            name=country
-        ))
-
-    # Añadir línea del balance total
-    fig.add_trace(go.Scatter(
-        x=df_total['date'],
-        y=df_total['balance'],
-        mode='lines+markers',
-        name='Balance total',
-        line=dict(color='blue', width=2)
-    ))
-
-    # Layout
-    fig.update_layout(
-        barmode='relative',
-        title=title,
-        xaxis_title='Fecha',
-        yaxis_title='Balance',
-        xaxis_tickangle=-45
-    )
-    return fig
-
-def plot_monthly_creations_cancellations(df):
-    """
-    Creates a bar chart of monthly creations and cancellations using Plotly.
-    
-    Parameters:
-    df (pandas.DataFrame): DataFrame with 'localdate', 'creations_count', and 'cancelations_count' columns
-    
-    Returns:
-    plotly.graph_objects.Figure: Plotly figure with grouped bars for creations and cancellations
-    """
-    # Validate input columns
-    if not {'localdate', 'creations_count', 'cancelations_count'}.issubset(df.columns):
-        raise ValueError("DataFrame must contain 'localdate', 'creations_count', and 'cancelations_count' columns")
-    
-    # Create a copy to avoid modifying input
-    df = df.copy()
-    
-    # Ensure localdate is datetime and extract year-month
-    df['localdate'] = pd.to_datetime(df['localdate'])
-    df['year_month'] = df['localdate'].dt.strftime('%Y-%m')
-    
-    # Group by year-month and sum creations and cancellations
-    monthly_data = df.groupby('year_month').agg({
-        'creations_count': 'sum',
-        'cancelations_count': 'sum'
-    }).reset_index()
-    
-    # Create Plotly figure
-    fig = go.Figure()
-    
-    # Add bars for creations (light blue)
-    fig.add_trace(go.Bar(
-        x=monthly_data['year_month'],
-        y=monthly_data['creations_count'],
-        name='Creations',
-        marker_color='lightblue',  # Light blue color
-        text=monthly_data['creations_count'],
-        textposition='auto'
-    ))
-    
-    # Add bars for cancellations (light red)
-    fig.add_trace(go.Bar(
-        x=monthly_data['year_month'],
-        y=monthly_data['cancelations_count'],
-        name='Cancellations',
-        marker_color='lightcoral',  # Light red color
-        text=monthly_data['cancelations_count'],
-        textposition='auto'
-    ))
-    
-    # Customize layout
-    fig.update_layout(
-        title='Monthly Creations and Cancellations',
-        xaxis_title='Month (YYYY-MM)',
-        yaxis_title='Count',
-        barmode='group',  # Group bars side by side
-        legend_title='Category',
-        xaxis=dict(
-            tickangle=45,
-            tickmode='array',
-            tickvals=monthly_data['year_month']
-        ),
-        showlegend=True,
-        width=1000,
-        height=600,
-        template='plotly_white',
-        margin=dict(b=150)  # Extra margin for rotated labels
-    )
-    
-    # Add grid
-    fig.update_xaxes(showgrid=True, gridcolor='lightgray')
-    fig.update_yaxes(showgrid=True, gridcolor='lightgray')
-    
-    return fig
-
 
 def stripe_tme_subscriptions_chart(mongo_subs_per_month, canceladas_mongo_per_month, 
                                    incomplete_mongo_per_month, title):
@@ -367,7 +160,6 @@ def plot_mp_planes(df):
     fig.update_layout(
         yaxis=dict(categoryorder="total ascending"),
         uniformtext_minsize=8,
-        # uniformtext_mode="hide",
         template="plotly_white"
     )
     return fig
@@ -688,3 +480,168 @@ def total_income_chart(total_income):
                 line=dict(color="#E9E636"),marker=dict(size=4, symbol='circle'))
     fig.update_layout(title='Income (USD)', yaxis_title="Income", xaxis_title="Month", yaxis_tickformat=',', title_x=0.5)
     return fig
+
+
+def plot_tgo_onboardings(df, selector='Role', max_categories=7):
+    # Mapeo de columnas
+    column_map = {
+        'Role': 'role',
+        'Use Case': 'useCase',
+        'First Project': 'firstProject',
+        'How Did You Hear': 'howDidYouHear'
+    }
+    
+    if selector not in column_map:
+        raise ValueError(f"Selector debe ser uno de: {list(column_map.keys())}")
+    
+    column = column_map[selector]
+    
+    # Contar frecuencias
+    count_df = df[column].value_counts().reset_index()
+    count_df.columns = [column, 'count']
+    
+    # Calcular porcentaje
+    total = count_df['count'].sum()
+    count_df['percentage'] = (count_df['count'] / total * 100).round(2)
+    
+    # === LIMITAR CATEGORÍAS ===
+    if len(count_df) > max_categories:
+        top_n = count_df.head(max_categories).copy()
+        others = count_df.iloc[max_categories:].copy()
+        others_row = pd.DataFrame([{
+            column: 'Otros',
+            'count': others['count'].sum().round(2),
+            'percentage': others['percentage'].sum().round(2)
+        }])
+        count_df = pd.concat([top_n, others_row], ignore_index=True)
+    else:
+        # Si hay menos o igual, no agrupar
+        pass
+    
+    # Ordenar: "Otros" al final, el resto por conteo ascendente
+    others = count_df[count_df[column] == 'Otros']
+    main = count_df[count_df[column] != 'Otros'].sort_values(by='count', ascending=True)
+    count_df = pd.concat([main, others], ignore_index=True) if not others.empty else main
+    
+    # Reset index para hover
+    count_df = count_df.reset_index(drop=True)
+    
+    # === TRUCO: Columna dummy para una sola barra ===
+    count_df['dummy'] = 'Total Onboardings'
+    
+    # === PALETA DE AZULES CLAROS (profesional y legible) ===
+    # Usamos una escala personalizada: azules claros a medianos
+    n_colors = len(count_df)
+    blue_palette = [
+        # '#E3F2FD', '#BBDEFB', '#90CAF9',
+        '#64B5F6', 
+        '#42A5F5', '#2196F3', '#1E88E5', '#1976D2', 
+        '#1565C0', '#0D47A1'
+    ]
+    # Repetir o recortar según necesidad
+    colors = (blue_palette * (n_colors // len(blue_palette) + 1))[:n_colors]
+    
+    # Asignar color a "Otros" como gris claro
+    color_map = {val: colors[i] for i, val in enumerate(count_df[column])}
+    if 'Otros' in color_map:
+        color_map['Otros'] = '#B0BEC5'  # Gris azulado claro
+    
+    
+    # === ANTES de px.bar: preparar customdata ===
+    count_df['category_name'] = count_df[column]  # nombre real de la categoría
+    count_df['customdata'] = count_df[['count', 'category_name']].values.tolist()  # array [count, name]
+    
+    # === GRÁFICO ===
+    fig = px.bar(
+        count_df,
+        x='percentage',
+        y='dummy',
+        color=column,
+        orientation='h',
+        labels={
+            'percentage': 'Porcentaje (%)',
+            'dummy': '',
+            column: selector
+        },
+        color_discrete_map=color_map,
+        custom_data=['customdata']  # ← importante: pasar el array
+    )
+    
+    # Personalizar barras
+    fig.update_traces(
+        hovertemplate=(
+            f'<b>{selector}:</b> %{{customdata[0][1]}}</b><br>'
+            'Porcentaje: %{x:.2f}%<br>'
+            'Conteo: %{customdata[0][0]}<extra></extra>'
+        )
+    )
+    
+    # Layout final
+    fig.update_layout(
+        barmode='stack',
+        showlegend=True,
+        xaxis_title="Porcentaje del total (%)",
+        yaxis_title="",
+        yaxis=dict(
+            showticklabels=False,
+            fixedrange=True
+        ),
+        height=300,
+        legend_title_text=selector,
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.02
+        ),
+        margin=dict(r=180),  # Espacio para leyenda externa
+        uniformtext=dict(mode='hide')
+    )
+    
+    # Forzar eje X al 100%
+    fig.update_xaxes(range=[0, 100], ticksuffix="%")
+    
+    return fig
+
+def table_tgo_onboardings(df, selector='Role'):
+    column_map = {
+        'Role': 'role',
+        'Use Case': 'useCase',
+        'First Project': 'firstProject',
+        'How Did You Hear': 'howDidYouHear'
+    }
+    column = column_map[selector]
+    
+    # Conteo y porcentaje
+    count_df = df[column].value_counts().reset_index()
+    count_df.columns = [selector, 'Conteo']
+    total = count_df['Conteo'].sum()
+    count_df['Porcentaje (%)'] = (count_df['Conteo'] / total * 100).round(2)
+    
+    # Ordenar
+    count_df = count_df.sort_values(by='Conteo', ascending=False).reset_index(drop=True)
+    
+    # Formatear para DataTable
+    data = count_df.to_dict('records')
+    columns = [
+        {"name": selector, "id": selector},
+        {"name": "Conteo", "id": "Conteo", "type": "numeric", "format": {"specifier": ","}},
+        {"name": "Porcentaje (%)", "id": "Porcentaje (%)", "type": "numeric", "format": {"specifier": ".2f"}}
+    ]
+    
+    table = dash_table.DataTable(data=data, columns=columns, id ='tgo-onboardings-table',
+                                            style_header={'backgroundColor': '#f5f7fa',
+                                                           'fontWeight': 'bold','textAlign': 'center'},
+                                            style_cell={'textAlign': 'left','padding': '10px','fontFamily': 'Arial, sans-serif'},
+                                            style_data={'backgroundColor': 'white'},
+                                            style_data_conditional=[
+                                                {'if': {'row_index': 'odd'}, 'backgroundColor': '#f9f9f9'}
+                                            ],
+                                            page_size=10,
+                                            sort_action="native",
+                                            filter_action="native",
+                                            export_format="csv",
+                                            export_headers="display"
+                                        )
+    return table
