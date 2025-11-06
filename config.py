@@ -23,4 +23,4 @@ MONGO_COLLECTION_ONBOARDING_TGO = 'onboardings'
 MONGO_COLLECTION_TGO_CALLS = 'transcribego-calls'
 
 # API KEY exchange rates
-API_KEY = os.getenv("API_KEY_PROD", "")
+API_KEY = os.getenv("API_KEY_DEV", "")
