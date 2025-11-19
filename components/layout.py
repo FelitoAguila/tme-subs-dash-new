@@ -114,6 +114,8 @@ def serve_layout():
                     value='tab-mp', style=tab_style, selected_style=tab_selected_style),
             dcc.Tab(label='TranscribeGo',
                     value = 'tab-tgo', style=tab_style, selected_style=tab_selected_style),
+            dcc.Tab(label='Revenue Recovery', 
+                    value = 'tab-revenue-recovery', style=tab_style, selected_style = tab_selected_style)
         ], style={"marginBottom": "20px"}),
         # Contenido de las pestañas
         html.Div(id='tab-content')
