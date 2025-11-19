@@ -144,74 +144,182 @@ def recovery_reason_stacked_bar_chart(data: pd.DataFrame) -> go.Figure:
 
     return fig
 
-def failed_volumne_by_decline_reason_stacked_bar_chart(data: pd.DataFrame) -> go.Figure:
-    """
-    Crea un gráfico de barras apiladas que muestra el monto de pagos fallidos
-    desglosados por motivo de fallo a lo largo del tiempo.
-    
-    Args:
-        df (pd.DataFrame): DataFrame que contiene las columnas 'initial_payment_failed_at', 
-                        'initial_failed_amount' y 'initial_payment_decline_reason'.
-    Returns: 
-        go.Figure: Gráfico de barras apiladas.
-    """
-    # -------------------------------------------------
-    # 1. Preparamos los datos
-    # -------------------------------------------------
-    df = data.copy()  
+def failed_volume_by_decline_reason_stacked_bar_chart(data: pd.DataFrame) -> go.Figure:
+    df = data.copy()
 
-    # Convertimos la columna a datetime
+    # -------------------------------------------------
+    # 1. Preparación de datos
+    # -------------------------------------------------
     df['initial_payment_failed_at'] = pd.to_datetime(df['initial_payment_failed_at'])
-
-    # Creamos la columna "Mes" en formato "2025-11", "2025-12", etc.
     df['Mes'] = df['initial_payment_failed_at'].dt.strftime('%Y-%m')
 
-    # Agrupamos por mes y initial_payment_decline_reason, sumando el monto fallido
+    # Total histórico por motivo para seleccionar top 5
+    total_por_motivo = (
+        df.groupby('initial_payment_decline_reason')['initial_failed_amount']
+        .sum()
+        .sort_values(ascending=False)
+    )
+
+    top_5_motivos = total_por_motivo.head(5).index.tolist()
+    
+    # Nueva columna: top 5 o "Others"
+    df['motivo_grafico'] = df['initial_payment_decline_reason'].where(
+        df['initial_payment_decline_reason'].isin(top_5_motivos), 
+        'Others'
+    )
+
+    # Agrupación final
     df_grouped = (
-        df.groupby(['Mes', 'initial_payment_decline_reason'], as_index=False)
+        df.groupby(['Mes', 'motivo_grafico'], as_index=False)
         .agg(total_amount=('initial_failed_amount', 'sum'))
     )
 
-    # Ordenamos los meses cronológicamente (importante para que el eje X quede bien)
-    df_grouped['Mes'] = pd.Categorical(
-        df_grouped['Mes'],
-        categories=sorted(df_grouped['Mes'].unique()),
+    # Total por mes
+    total_mes = df_grouped.groupby('Mes')['total_amount'].transform('sum')
+    df_grouped['percentage'] = 100 * df_grouped['total_amount'] / total_mes
+
+    # Orden de meses
+    meses_ordenados = sorted(df_grouped['Mes'].unique())
+    df_grouped['Mes'] = pd.Categorical(df_grouped['Mes'], categories=meses_ordenados, ordered=True)
+
+    # Orden de leyenda: top 5 + Others al final
+    orden_leyenda = top_5_motivos + ['Others']
+    df_grouped['motivo_grafico'] = pd.Categorical(
+        df_grouped['motivo_grafico'],
+        categories=orden_leyenda,
         ordered=True
     )
-    df_grouped = df_grouped.sort_values('Mes')
+
+    # Ordenamos para que Plotly respete el orden
+    df_grouped = df_grouped.sort_values(['Mes', 'motivo_grafico'])
 
     # -------------------------------------------------
-    # 2. Creamos el gráfico de barras apiladas
+    # 2. Gráfico con Graph Objects (más control que px.bar)
     # -------------------------------------------------
-    fig = px.bar(
-        df_grouped,
-        x='Mes',
-        y='total_amount',
-        color='initial_payment_decline_reason',
-        title='Monto fallido por mes y motivo',
-        labels={
-            'total_amount': 'Monto fallido ($)',
-            'Mes': 'Mes',
-            'initial_payment_decline_reason': 'Motivo de fallo'
-        },
-    
-        template='simple_white',
-    )
+    fig = go.Figure()
 
-    # Mejoramos un poco el formato
-    fig.update_traces(
-        text = None,
-        hovertemplate='<b>%{x}</b><br>'
-                  'Motivo: <b>%{fullData.name}</b><br>'
-                  'Monto: <b>$%{y:,.2f}</b><extra></extra>'
-    )
+    for motivo in orden_leyenda:
+        df_motivo = df_grouped[df_grouped['motivo_grafico'] == motivo]
+        
+        fig.add_trace(go.Bar(
+            x=df_motivo['Mes'],
+            y=df_motivo['total_amount'],
+            name=motivo,
+            text=df_motivo['total_amount'].apply(lambda x: f'${x:,.0f}'),
+            textposition='none',
+            hovertemplate=
+                '<b>%{x}</b><br>' +
+                f'Motivo: <b>{motivo}</b><br>' +
+                'Monto: <b>$%{y:,.0f}</b><br>' +
+                'Porcentaje: <b>%{customdata:.1f}%</b>' +
+                '<extra></extra>',
+            customdata=df_motivo['percentage']
+        ))
 
+    # Layout
     fig.update_layout(
-        hovermode='x unified',
+        title='Monto fallido por mes y motivo (Top 5 + Others)',
+        xaxis_title='Mes',
+        yaxis_title='Monto total fallido ($)',
+        yaxis=dict(tickformat=',.0f'),
+        barmode='stack',
+        hovermode='closest',
+        template='simple_white',
+        bargap=0.15,
         legend_title='Motivo de fallo',
-        yaxis=dict(title='Monto total fallido ($)', tickformat=',.0f'),
-        xaxis=dict(title='Mes'),
-        bargap=0.15
+        legend=dict(traceorder='normal')
     )
 
     return fig
+
+def failed_reasons_detail_table(df: pd.DataFrame, selected_month: str = None):
+    """
+    Tabla de detalle que muestra todas las razones de fallo para un mes seleccionado.
+    Si no se selecciona mes, muestra el total histórico.
+    
+    Ideal para usar como callback con el click/hover del gráfico de barras.
+    """
+    df = df.copy()
+    df['initial_payment_failed_at'] = pd.to_datetime(df['initial_payment_failed_at'])
+    df['Mes'] = df['initial_payment_failed_at'].dt.strftime('%Y-%m')
+
+    # Filtrar por mes seleccionado (o todo si no hay selección)
+    if selected_month:
+        df_filtered = df[df['Mes'] == selected_month]
+        title = f"Detalles de motivos - {selected_month}"
+    else:
+        df_filtered = df
+        title = "Detalles de motivos - Total histórico"
+
+    if df_filtered.empty:
+        # Tabla vacía con mensaje
+        data = []
+        columns = [
+            {"name": "Motivo", "id": "motivo"},
+            {"name": "Monto fallido ($)", "id": "monto"},
+            {"name": "% del mes (%)", "id": "porcentaje"}
+        ]
+    else:
+        # Agrupamos por motivo
+        summary = (
+            df_filtered.groupby('initial_payment_decline_reason', as_index=False)
+            .agg(monto=('initial_failed_amount', 'sum'))
+        )
+
+        total_mes = summary['monto'].sum()
+        summary['porcentaje'] = (summary['monto'] / total_mes * 100).round(2)
+        summary = summary.sort_values('monto', ascending=False).reset_index(drop=True)
+
+        # Renombramos para mostrar bonito
+        summary['motivo'] = summary['initial_payment_decline_reason']
+        summary['Monto fallido ($)'] = summary['monto']
+        summary['% del mes'] = summary['porcentaje'] + "%"
+
+        # Formateo final
+        data = summary[['motivo', 'Monto fallido ($)', '% del mes']].to_dict('records')
+
+        columns = [
+            {"name": "Motivo", "id": "motivo"},
+            {"name": "Monto fallido ($)", "id": "Monto fallido ($)", 
+             "type": "numeric", "format": {"specifier": ",.0f"}},
+            {"name": "% del mes", "id": "% del mes", 
+             "type": "numeric", "format": {"specifier": ".2f"}}
+        ]
+
+    # Creamos la tabla Dash
+    table = dash_table.DataTable(
+        data=data,
+        columns=columns,
+        id='failed-reasons-detail-table',
+        
+        style_header={
+            'backgroundColor': '#2c3e50',
+            'color': 'white',
+            'fontWeight': 'bold',
+            'textAlign': 'center',
+            'fontFamily': 'Arial, sans-serif'
+        },
+        style_cell={
+            'textAlign': 'left',
+            'padding': '12px',
+            'fontFamily': 'Arial, sans-serif',
+            'fontSize': '14px'
+        },
+        style_data={
+            'backgroundColor': 'white',
+            'border': '1px solid #ecf0f1'
+        },
+        style_data_conditional=[
+            {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8f9fa'},
+            {'if': {'column_id': 'Monto fallido ($)'}, 'textAlign': 'right'},
+            {'if': {'column_id': '% del mes'}, 'textAlign': 'right', 'fontWeight': 'bold'},
+        ],
+        style_table={'overflowX': 'auto'},
+        page_size=12,
+        sort_action="native",
+        filter_action="native",
+        export_format="csv",
+        export_headers="display",
+    )
+
+    return table
