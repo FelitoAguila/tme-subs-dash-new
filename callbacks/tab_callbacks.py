@@ -562,6 +562,14 @@ def register_tab_callbacks(app):
                         dcc.Graph(id = 'revenue-recovered-method-chart')
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+
+                # Failed volume by decline reason
+                html.Div([
+                    html.Div([
+                        html.H3("Failed volume by decline reason", style={'textAlign': 'center'}), 
+                        dcc.Graph(id= 'stripe-decline-reason-chart')
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
     
     # Callback de Onboardings de TGO
@@ -699,6 +707,7 @@ def register_tab_callbacks(app):
     @app.callback(
         Output('revenue-recovery-status-chart', 'figure'),  
         Output ('revenue-recovered-method-chart', 'figure'),
+        Output ('stripe-decline-reason-chart', 'figure'),
         Input('stripe-revenue-recovery-data-store', 'data'),
         prevent_initial_call=True
     )
@@ -721,6 +730,8 @@ def register_tab_callbacks(app):
         data['recovery_status'] = recovery_status
         revenue_recovery_status_fig = recovery_status_stacked_bar_chart(data)
         revenue_recovered_method_fig = recovery_reason_stacked_bar_chart(data)
-        failed_volume_reason_fig = failed_volumne_by_decline_reason_stacked_bar_chart(data)
+        failed_volume_reason_fig = failed_volume_by_decline_reason_stacked_bar_chart(data)
         
-        return revenue_recovery_status_fig, revenue_recovered_method_fig 
+        return revenue_recovery_status_fig, revenue_recovered_method_fig, failed_volume_reason_fig
+    
+    
