@@ -1,4 +1,5 @@
 # callbacks/tab_callbacks.py
+from fileinput import filename
 from importlib.resources import contents
 from dash import Input, Output, html, dcc, State, no_update, dash_table
 from subs_metrics import SubscriptionMetrics
@@ -7,9 +8,10 @@ import traceback
 import pandas as pd
 import plotly.graph_objs as go
 from style.styles import (
-    colors,
-    graph_card_style
+    colors, card_style, metric_card_style, graph_card_style,
+    tab_style, tab_selected_style
 )
+from components.stripe_revenue_recovery_charts import *
 from components.charts import (
     create_stacked_bar_chart,
     stripe_tme_subscriptions_chart,
@@ -528,6 +530,39 @@ def register_tab_callbacks(app):
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
+        
+        elif tab == 'tab-revenue-recovery':
+            # ------------------- DASHBOARD REVENUE RECOVERY --------------------------------------------------
+            return html.Div([
+                html.Div([
+                    html.Label([
+                            "Load Stripe Revenue Recovery data",
+                            html.Br(), # salto de línea
+                            "(csv file)"
+                            ], style ={"fontWeight": "bold", "marginBottom": "5px"}),
+                    dcc.Upload(id='upload-stripe-revenue-recovery-data', 
+                           children=html.Button('Load file', className='btn btn-primary'),
+                        #    multiple=False,  # Allow only one file
+                           multiple=False,
+                           accept='.csv',   # Restrict to CSV files (adjust as needed)
+                           style={'width': '100%', 'height': '60px', 'lineHeight': '60px', 'borderWidth': '1px',
+                                  'borderStyle': 'dashed','borderRadius': '5px','textAlign': 'center','margin': '10px'}
+                    ),
+
+                html.Div(id='stripe-revenue-recovery-data-upload'),  # Placeholder for upload feedback
+                dcc.Store(id='stripe-revenue-recovery-data-store')
+                ], style={**card_style, "width": "25%"}),
+
+                # Revenue recovery status y método de recuperación
+                html.Div([
+                    html.Div([
+                        dcc.Graph(id = 'revenue-recovery-status-chart')
+                    ], style=graph_card_style),
+                    html.Div([
+                        dcc.Graph(id = 'revenue-recovered-method-chart')
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+            ])
     
     # Callback de Onboardings de TGO
     @app.callback(
@@ -620,3 +655,72 @@ def register_tab_callbacks(app):
         succeeded_stripe_payments = metrics.get_stripe_succeeded_subscription_payments(start_date, end_date)
         tme_subs_income_fig = tme_subs_income_chart (succeeded_stripe_payments, selector)
         return tme_subs_income_fig
+
+    # Callback Stripe Revenue Recovery Upload
+    @app.callback(
+        Output('stripe-revenue-recovery-data-store', 'data'),
+        Output('stripe-revenue-recovery-data-upload', 'children'),
+        Input('upload-stripe-revenue-recovery-data', 'contents'),
+        State('upload-stripe-revenue-recovery-data', 'filename'),
+        prevent_initial_call=True
+    )
+    def upload_and_store_csv(contents, filename):
+        if contents is None:
+            return no_update, no_update
+
+        # Decodificar el contenido (viene en base64)
+        content_type, content_string = contents.split(',')
+        decoded = base64.b64decode(content_string)
+    
+        try:
+            if filename.endswith('.csv'):
+                # Leer el CSV directamente desde bytes
+                df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
+            elif filename.endswith(('.xls', '.xlsx')):
+                df = pd.read_excel(io.BytesIO(decoded))
+            else:
+                return None, html.Div(f'Formato no soportado: {filename}', className='text-danger')
+        
+            # Convertir el DataFrame a dict para que sea JSON-serializable y almacenable en dcc.Store
+            data_to_store = df.to_dict('records')   # o df.to_json(orient='records') si prefieres string
+        
+            feedback = html.Div([
+                html.Span(f'Archivo "{filename}" cargado correctamente ', 
+                         className='text-success'),
+                html.Small(f"({len(df)} filas, {len(df.columns)} columnas)")
+            ])
+        
+            return data_to_store, feedback
+        
+        except Exception as e:
+            return None, html.Div(f'Error al procesar el archivo: {str(e)}', className='text-danger')
+
+    # Callback para renderizar los charts de revenue recover
+    @app.callback(
+        Output('revenue-recovery-status-chart', 'figure'),  
+        Output ('revenue-recovered-method-chart', 'figure'),
+        Input('stripe-revenue-recovery-data-store', 'data'),
+        prevent_initial_call=True
+    )
+    def render_revenue_recovery_content(stripe_revenue_recovery_data):
+        if stripe_revenue_recovery_data is None or len(stripe_revenue_recovery_data) == 0:
+            return "No hay datos cargados aún."
+        print("Datos de revenue recovery cargados")
+        
+        data = pd.DataFrame(stripe_revenue_recovery_data)
+        recovery_status = []
+        for idx, row in data.iterrows():
+            retries_exhausted = row['retries_exhausted']
+            recovered_amount = row['recovered_amount']
+            if not retries_exhausted:
+                recovery_status.append('In recovery')
+            elif pd.isna(recovered_amount) or recovered_amount == 0:
+                recovery_status.append('Not recovered')
+            else:
+                recovery_status.append('Recovered')
+        data['recovery_status'] = recovery_status
+        revenue_recovery_status_fig = recovery_status_stacked_bar_chart(data)
+        revenue_recovered_method_fig = recovery_reason_stacked_bar_chart(data)
+        failed_volume_reason_fig = failed_volumne_by_decline_reason_stacked_bar_chart(data)
+        
+        return revenue_recovery_status_fig, revenue_recovered_method_fig 
