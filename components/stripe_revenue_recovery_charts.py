@@ -323,3 +323,31 @@ def failed_reasons_detail_table(df: pd.DataFrame, selected_month: str = None):
     )
 
     return table
+
+def recovery_subs_funnel_chart(recoverable_subs: pd.DataFrame) -> go.Figure:
+    """
+    Crea un gráfico que muestra el status de suscripciones en recovery
+    """
+    
+    recovery_dict = {
+        "Entered Recovery": len(recoverable_subs), 
+        "Unpaid": len(recoverable_subs[recoverable_subs['subscription_status']=='unpaid']),
+        "Past Due": len(recoverable_subs[recoverable_subs['subscription_status']=='past_due']),
+        "Active": len(recoverable_subs[recoverable_subs['subscription_status']=='active']),
+        "Canceled": len(recoverable_subs[recoverable_subs['subscription_status']=='canceled']), 
+        "Incomplete": len(recoverable_subs[recoverable_subs['subscription_status']=='incomplete'])
+    }
+
+    labels = list(recovery_dict.keys())
+    source = [0]*len(labels[1:])
+    target = list(range(1, len(labels)))
+    value  = list(recovery_dict.values())[1:]
+    fig = go.Figure(go.Sankey(
+        node=dict(pad=30, thickness=40, label=labels,
+                  color=["#37474F", "#FF9800", "#636EFA", "#4CAF50"]),
+        link=dict(source=source, target=target, value=value,
+                  color=["#FF9800", "#636EFA", "#4CAF50"])
+    ))
+
+    fig.update_layout(title=f"Estado actual de suscripciones ({len(recoverable_subs)} totales)", height=500)
+    return fig
