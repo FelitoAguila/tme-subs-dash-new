@@ -16,6 +16,7 @@ MONGO_DB_TME_CHARTS = 'TranscribeMe-charts'
 MONGO_COLLECTION_TGO_SUBS = 'tgo-subscriptions'
 MONGO_COLLECTION_MP_PAYMENTS = 'mp-payments'
 MONGO_COLLECTION_STRIPE_PAYMENTS = 'stripe-payments'
+MONGO_COLLECTION_STRIPE_RECOVERY = 'stripe-recovery'
 
 # Configuración para métricas de TGO
 MONGO_DB_TGO = 'B2B'
