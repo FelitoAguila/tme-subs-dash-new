@@ -535,23 +535,33 @@ def register_tab_callbacks(app):
             # ------------------- DASHBOARD REVENUE RECOVERY --------------------------------------------------
             return html.Div([
                 html.Div([
-                    html.Label([
-                            "Load Stripe Revenue Recovery data",
-                            html.Br(), # salto de línea
-                            "(csv file)"
-                            ], style ={"fontWeight": "bold", "marginBottom": "5px"}),
-                    dcc.Upload(id='upload-stripe-revenue-recovery-data', 
-                           children=html.Button('Load file', className='btn btn-primary'),
-                        #    multiple=False,  # Allow only one file
-                           multiple=False,
-                           accept='.csv',   # Restrict to CSV files (adjust as needed)
-                           style={'width': '100%', 'height': '60px', 'lineHeight': '60px', 'borderWidth': '1px',
+                    html.Div([
+                        html.Label([
+                                "Load Stripe Revenue Recovery data",
+                                html.Br(), # salto de línea
+                                "(csv file)"
+                                ], style ={"fontWeight": "bold", "marginBottom": "5px"}),
+                        dcc.Upload(id='upload-stripe-revenue-recovery-data', 
+                               children=html.Button('Load file', className='btn btn-primary'),
+                            multiple=False,
+                            accept='.csv',   # Restrict to CSV files (adjust as needed)
+                            style={'width': '100%', 'height': '60px', 'lineHeight': '60px', 'borderWidth': '1px',
                                   'borderStyle': 'dashed','borderRadius': '5px','textAlign': 'center','margin': '10px'}
-                    ),
+                        ),
+                        html.Div(id='stripe-revenue-recovery-data-upload'),  # Placeholder for upload feedback
+                        dcc.Store(id='stripe-revenue-recovery-data-store')
+                    ], style={**card_style, "width": "25%"}),
 
-                html.Div(id='stripe-revenue-recovery-data-upload'),  # Placeholder for upload feedback
-                dcc.Store(id='stripe-revenue-recovery-data-store')
-                ], style={**card_style, "width": "25%"}),
+                    html.Div([
+                        html.Label("Cargar recovery data", 
+                               style ={"fontWeight": "bold", "marginBottom": "5px"}),
+                        html.Button('Cargar datos', id='load-mongo-recovery-data-button', n_clicks=0, className='btn btn-primary',
+                                style={'width': '100%', 'height': '40px', 'fontSize': '18px', 'marginTop': '10px'}),
+                        html.Div(id='mongo-recovery-data-feedback'),  # Placeholder for upload feedback
+                        dcc.Store(id='mongo-recovery-data-store'),
+                
+                    ], style={**card_style, "width": "25%"}),
+                ], style={"marginBottom": "20px", "display": 'flex'}),
 
                 # Revenue recovery status y método de recuperación
                 html.Div([
@@ -568,6 +578,14 @@ def register_tab_callbacks(app):
                     html.Div([
                         html.H3("Failed volume by decline reason", style={'textAlign': 'center'}), 
                         dcc.Graph(id= 'stripe-decline-reason-chart')
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+
+                # Funnel chart subs
+                html.Div([
+                    html.Div([
+                        html.H3("Funnel - Subscriptions in Recovery", style={'textAlign': 'center'}), 
+                        dcc.Graph(id= 'recovery-subs-funnel-chart')
                     ], style=graph_card_style),
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
@@ -734,4 +752,35 @@ def register_tab_callbacks(app):
         
         return revenue_recovery_status_fig, revenue_recovered_method_fig, failed_volume_reason_fig
     
-    
+    # Callback para cargar revenue recovery data de Mongo DB
+    @app.callback(
+        # Output('mongo-recovery-data-store', 'data'),
+        Output('mongo-recovery-data-feedback', 'children'),    
+        Output ('recovery-subs-funnel-chart', 'figure'),
+        Input('load-mongo-recovery-data-button', 'n_clicks'),
+        prevent_initial_call=True  # Evita la llamada inicial sin valor
+    )
+    def cargar_datos_mongo(n_clicks):
+        if n_clicks is None or n_clicks == 0:
+            # Retorna no_update para no actualizar nada inicialmente
+            return [no_update] * 2
+        # if n_clicks > 0:
+        try:
+            # Pagos de MP
+            recovery_data = metrics.get_mongo_recovery_data()
+            fig = recovery_subs_funnel_chart(recovery_data)
+
+                # Guardamos como dict para dcc.Store
+            return (
+                    # recovery_data.to_dict('records'), 
+                    f"Datos cargados desde MongoDB correctamente",
+                    fig
+                    )
+        except Exception as e:
+            print(f"Error en callback: {e}")
+            print("Traceback completo:")
+            traceback.print_exc()  # Esto imprime el stacktrace detallado
+            return (# [], 
+                    f"Error al cargar: {str(e)}",
+                    no_update
+                    )
