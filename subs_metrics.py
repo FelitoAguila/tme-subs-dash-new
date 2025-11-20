@@ -12,6 +12,7 @@ from config import (
     MONGO_COLLECTION_TGO_SUBS, # colección de tgo-subscriptions
     MONGO_COLLECTION_MP_PAYMENTS, # colección mp-payments
     MONGO_COLLECTION_STRIPE_PAYMENTS, # colección stripe-payments,
+    MONGO_COLLECTION_STRIPE_RECOVERY, # colección stripe-recovery
     MONGO_DB_TGO, # base de datos B2B
     MONGO_COLLECTION_ONBOARDING_TGO, # colección onboardings
     MONGO_COLLECTION_TGO_CALLS, # colección transcribego-calls
@@ -29,6 +30,7 @@ class SubscriptionMetrics:
         self.tgo_subs = self.db_tme_charts[MONGO_COLLECTION_TGO_SUBS]
         self.mp_payments = self.db_tme_charts[MONGO_COLLECTION_MP_PAYMENTS]
         self.stripe_payments = self.db_tme_charts[MONGO_COLLECTION_STRIPE_PAYMENTS]
+        self.stripe_recovery = self.db_tme_charts[MONGO_COLLECTION_STRIPE_RECOVERY]
         self.db_tgo = self.client[MONGO_DB_TGO]
         self.tgo_onboardings = self.db_tgo[MONGO_COLLECTION_ONBOARDING_TGO]
         self.tgo_calls = self.db_tgo[MONGO_COLLECTION_TGO_CALLS]
@@ -982,3 +984,12 @@ class SubscriptionMetrics:
             print ('No TGO onboardings found')
             return pd.DataFrame() 
 
+    def get_mongo_recovery_data(self):
+        docs = list(self.stripe_recovery.find())
+        df = pd.DataFrame(docs)
+        if not df.empty:
+            print ("Stripe recovery data found")
+            return df
+        else:
+            print ('No Stripe recovery data found')
+            return pd.DataFrame()
