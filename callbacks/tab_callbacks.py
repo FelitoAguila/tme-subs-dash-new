@@ -12,6 +12,7 @@ from style.styles import (
     tab_style, tab_selected_style
 )
 from components.stripe_revenue_recovery_charts import *
+from components.airtable import map_fig, expired_per_day_fig, total_funnel_fig
 from components.charts import (
     create_stacked_bar_chart,
     stripe_tme_subscriptions_chart,
@@ -531,9 +532,27 @@ def register_tab_callbacks(app):
                 ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
             ])
         
-        elif tab == 'tab-revenue-recovery':
+        elif tab == 'tab-revenue-recovery':  
             # ------------------- DASHBOARD REVENUE RECOVERY --------------------------------------------------
             return html.Div([
+                # Recovery de los expired-incomplete
+                html.Div([
+                    html.Div([
+                        html.H3("Total Expired Stripe Checkout Sessions per Country", style={'textAlign': 'center'}), 
+                        dcc.Graph(figure = map_fig, id = 'total-expired-checkout-per-country')
+                    ], style=graph_card_style),
+                    html.Div([
+                        html.H3("Expired Stripe Checkout Sessions per Day", style={'textAlign': 'center'}), 
+                        dcc.Graph(figure = expired_per_day_fig, id = 'expired-checkout-per-day')
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+                html.Div([
+                    html.Div([
+                        html.H3("Total Expired Checkout Sessions - Funnel", style={'textAlign': 'center'}), 
+                        dcc.Graph(figure = total_funnel_fig, id = 'expired-chechkout-funnel-chart')
+                    ], style=graph_card_style),
+                ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"}),
+
                 html.Div([
                     html.Div([
                         html.Label([
