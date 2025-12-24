@@ -25,3 +25,11 @@ MONGO_COLLECTION_TGO_CALLS = 'transcribego-calls'
 
 # API KEY exchange rates
 API_KEY = os.getenv("API_KEY_PROD", "")
+
+# Configuración Airtable
+PERSONAL_ACCESS_TOKEN = os.getenv("PAT", "")
+BASE_ID = os.getenv("BASE_ID", "")
+TABLE_ID = os.getenv("TABLE_ID", "")
+
+# Configuración Stripe
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "")
